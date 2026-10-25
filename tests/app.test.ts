@@ -332,9 +332,30 @@ async function main() {
     assert.ok((await C.listDeletedLeads()).some((x) => x.id === r.id));
     await C.restoreLead(ACTOR, r.id);
     assert.ok((await C.listLeads({ q: 'Oops' })).length);
-    await rejects(() => sql`delete from crm.lead where id = ${r.id}::int`, 'cannot be permanently deleted');
+    await rejects(() => sql`delete from crm.lead where id = ${r.id}::int`, 'move the enquiry to trash first');
+    await rejects(() => C.purgeLead(ACTOR, r.id), 'move the enquiry to trash first');
     const [{ n: audits }] = await sql<{ n: number }>`select count(*)::int as n from crm.audit_log where table_name = 'lead' and record_id = ${String(r.id)}::text and action in ('soft_delete','restore')`;
     assert.equal(audits, 2);
+  });
+  await test('delete forever (from Trash) and deleting suppliers', async () => {
+    const r = await C.createLead(ACTOR, C.parseLeadInput(g({ client_name: 'Gone Forever', destination: 'Bali' })));
+    const used = await C.saveSupplier(ACTOR, g({ name: 'Purge Test DMC', email: 'p@purge.example', destinations: 'Bali' }));
+    const unused = await C.saveSupplier(ACTOR, g({ name: 'Never Used DMC', email: 'n@unused.example', destinations: 'Bali' }));
+    await C.requestQuotes(ACTOR, r.id, [used], 'email');
+    // a supplier with history is kept – hide it instead
+    await rejects(() => C.deleteSupplier(ACTOR, used), 'hide supplier');
+    await C.deleteSupplier(ACTOR, unused);
+    assert.ok(!(await C.listSuppliers()).some((s) => s.id === unused));
+    // delete → trash → delete forever removes the enquiry and its quotes
+    await C.softDeleteLead(ACTOR, r.id);
+    await C.purgeLead(ACTOR, r.id);
+    assert.ok(!(await C.listDeletedLeads()).some((x) => x.id === r.id));
+    const [{ n }] = await sql<{ n: number }>`select count(*)::int as n from crm.supplier_quote where lead_id = ${r.id}::int`;
+    assert.equal(n, 0);
+    const [{ a }] = await sql<{ a: number }>`select count(*)::int as a from crm.audit_log where table_name = 'lead' and record_id = ${String(r.id)}::text and action = 'delete'`;
+    assert.equal(a, 1, 'the audit log keeps a copy');
+    // now the supplier has no history left and can be deleted
+    await C.deleteSupplier(ACTOR, used);
   });
   await test('lists, filters and search (including by supplier name)', async () => {
     assert.ok((await C.listLeads({ stage: 'lost' })).every((l) => l.stage === 'lost'));

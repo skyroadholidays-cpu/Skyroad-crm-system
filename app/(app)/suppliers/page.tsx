@@ -34,6 +34,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   return (
     <div className="stack">
       <PageHeader title="Suppliers" subtitle="DMCs, hotels and transport partners you ask for rates. Add each one once – their email & WhatsApp are used for every request." />
+      {sp.deleted && <Flash>Supplier deleted.</Flash>}
       {next && <Flash tone="warn">Add the supplier below – you’ll go straight back to the enquiry. <Link href={next}>Back without adding</Link></Flash>}
       <div className="two-col">
         <Card title={filtered ? `Suppliers (${suppliers.length} of ${all.length})` : `All suppliers (${all.length})`}>

@@ -5,9 +5,9 @@ import * as C from '@/lib/crm';
 import { db, inSeries } from '@/lib/db-core';
 import { fmtDateTime } from '@/lib/dates';
 import { STAGES, STAGE_LABEL, STAGE_HELP } from '@/lib/constants';
-import { Card, PageHeader } from '@/components/ui';
+import { Card, Flash, PageHeader } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
-import { changePasswordAction, signOutOthersAction, restoreLeadAction, createConnectorAction, disableConnectorAction, saveTemplateAction } from '@/app/actions';
+import { changePasswordAction, signOutOthersAction, restoreLeadAction, purgeLeadAction, createConnectorAction, disableConnectorAction, saveTemplateAction } from '@/app/actions';
 import { connectorStatus, getSupplierTemplate } from '@/lib/settings';
 import { DEFAULT_SUPPLIER_TEMPLATE, TEMPLATE_VARS } from '@/lib/templates';
 
@@ -23,7 +23,8 @@ function device(ua: string | null) {
 const TABLE: Record<string, string> = { lead: 'enquiry', supplier: 'supplier', supplier_quote: 'supplier quote', lead_payment: 'payment' };
 const ACTION: Record<string, string> = { insert: 'Created', update: 'Edited', delete: 'Removed', soft_delete: 'Deleted', restore: 'Restored' };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
   const user = await requireUser();
   const [sessions, deleted, audit] = await inSeries(
     () => listSessions(user),
@@ -113,6 +114,7 @@ export default async function SettingsPage() {
         <p className="muted small">Recording a supplier request, a supplier quote, sharing a quote, logging a client call after the quote, confirming, and recording payments all move the stage forward for you.</p>
       </Card>
 
+      {sp.purged && <Flash>Enquiry deleted forever.</Flash>}
       <Card title="Trash – deleted enquiries">
         {deleted.length === 0 ? <p className="muted small">Nothing deleted.</p> : (
           <div className="table-wrap"><table>
@@ -122,7 +124,10 @@ export default async function SettingsPage() {
                 <tr key={l.id}>
                   <td><Link href={`/leads/${l.id}`}>{l.lead_no}</Link><span className="sub">{l.client_name} · {l.destination}</span></td>
                   <td>{fmtDateTime(l.deleted_at)}</td>
-                  <td><ActionForm action={restoreLeadAction}><input type="hidden" name="id" value={l.id} /><SubmitButton className="btn btn-ghost btn-sm" pendingText="…">Restore</SubmitButton></ActionForm></td>
+                  <td><div className="row">
+                    <ActionForm action={restoreLeadAction}><input type="hidden" name="id" value={l.id} /><SubmitButton className="btn btn-ghost btn-sm" pendingText="…">Restore</SubmitButton></ActionForm>
+                    <ActionForm action={purgeLeadAction} confirm={`Delete ${l.lead_no} forever? Its supplier quotes, payments and timeline are removed too. This cannot be undone.`}><input type="hidden" name="id" value={l.id} /><SubmitButton className="btn btn-danger btn-sm" pendingText="…">Delete forever</SubmitButton></ActionForm>
+                  </div></td>
                 </tr>
               ))}
             </tbody>

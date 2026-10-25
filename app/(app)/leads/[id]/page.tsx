@@ -19,7 +19,7 @@ import { CopyButton } from '@/components/client';
 import { PriorityDot } from '@/components/LeadBits';
 import {
   setStageAction, logInteractionAction, setFollowUpAction, requestQuotesAction, updateQuoteAction, removeQuoteAction,
-  shareQuoteAction, confirmBookingAction, addPaymentAction, deletePaymentAction, deleteLeadAction, restoreLeadAction,
+  shareQuoteAction, confirmBookingAction, addPaymentAction, deletePaymentAction, deleteLeadAction, restoreLeadAction, purgeLeadAction,
 } from '@/app/actions';
 
 export const metadata = { title: 'Enquiry' };
@@ -71,6 +71,10 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
           {waClient && <a className="btn btn-wa" href={T.whatsappLink(l.phone, `Hi ${l.client_name.split(' ')[0]}, `)} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
           {l.phone && <a className="btn btn-ghost" href={`tel:${l.phone}`}>Call</a>}
           <Link href={`/leads/${l.id}/edit`} className="btn btn-ghost">Edit</Link>
+          <ActionForm action={deleteLeadAction} confirm={`Delete ${l.lead_no}? It moves to Settings → Trash, where you can restore it or delete it forever.`}>
+            <input type="hidden" name="id" value={l.id} />
+            <SubmitButton className="btn btn-danger" pendingText="Deleting…">Delete</SubmitButton>
+          </ActionForm>
         </>}
       />
       {sp.saved && <Flash>Saved.</Flash>}
@@ -80,6 +84,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
       {deleted && (
         <div className="alert alert-warn">This enquiry was deleted {fmtDateTime(l.deleted_at)}.
           <ActionForm action={restoreLeadAction}><input type="hidden" name="id" value={l.id} /><SubmitButton className="btn btn-ghost btn-sm">Restore</SubmitButton></ActionForm>
+          <ActionForm action={purgeLeadAction} confirm={`Delete ${l.lead_no} forever? Its supplier quotes, payments and timeline are removed too. This cannot be undone.`}><input type="hidden" name="id" value={l.id} /><SubmitButton className="btn btn-danger btn-sm" pendingText="Deleting…">Delete forever</SubmitButton></ActionForm>
         </div>
       )}
 
@@ -353,7 +358,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
           </Card>
 
           {!deleted && (
-            <ActionForm action={deleteLeadAction} confirm={`Delete ${l.lead_no}? You can restore it later from Settings → Trash.`}>
+            <ActionForm action={deleteLeadAction} confirm={`Delete ${l.lead_no}? It moves to Settings → Trash, where you can restore it or delete it forever.`}>
               <input type="hidden" name="id" value={l.id} />
               <SubmitButton className="btn btn-link small danger" pendingText="Deleting…">Delete this enquiry</SubmitButton>
             </ActionForm>

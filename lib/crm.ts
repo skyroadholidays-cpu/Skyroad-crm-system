@@ -256,6 +256,13 @@ export async function restoreLead(actor: string, id: number) {
     await log(tx, id, 'system', 'Enquiry restored', actor);
   });
 }
+/** Removes an enquiry for good. Only works on enquiries already in the Trash. */
+export async function purgeLead(actor: string, id: number) {
+  await withTx(actor, async (tx) => {
+    const rows = await tx<{ lead_no: string }>`delete from crm.lead where id = ${id}::int and deleted_at is not null returning lead_no`;
+    if (!rows.length) throw new UserError('Move the enquiry to Trash first (Delete), then use Delete forever.');
+  });
+}
 export async function listDeletedLeads(limit = 50) {
   return db()<{ id: number; lead_no: string; client_name: string; destination: string; deleted_at: string; deleted_by: string | null }>`
     select id, lead_no, client_name, destination, deleted_at::text, deleted_by from crm.lead where deleted_at is not null
@@ -364,6 +371,16 @@ export async function saveSupplier(actor: string, get: Getter): Promise<number> 
   });
 }
 
+/** Deletes a supplier for good. Suppliers already used on enquiries are kept (hide them instead) so that history stays complete. */
+export async function deleteSupplier(actor: string, id: number) {
+  await withTx(actor, async (tx) => {
+    const [s] = await tx<{ name: string; n: number }>`
+      select s.name, (select count(*)::int from crm.supplier_quote q where q.supplier_id = s.id) as n from crm.supplier s where s.id = ${id}::int`;
+    if (!s) throw new UserError('Supplier not found.');
+    if (s.n > 0) throw new UserError(`${s.name} is on ${s.n} enquir${s.n === 1 ? 'y' : 'ies'}, so deleting would erase that quote history. Use “Hide supplier” instead – hidden suppliers get no new requests.`);
+    await tx`delete from crm.supplier where id = ${id}::int`;
+  });
+}
 export async function setSupplierActive(actor: string, id: number, active: boolean) {
   await withTx(actor, (tx) => tx`update crm.supplier set is_active = ${active}::boolean where id = ${id}::int`);
 }

@@ -122,6 +122,13 @@ export async function deleteLeadAction(_: FormState, fd: FormData): Promise<Form
   });
 }
 
+export async function purgeLeadAction(_: FormState, fd: FormData): Promise<FormState> {
+  return run(async (actor) => {
+    await C.purgeLead(actor, idOf(fd));
+    return { redirect: '/settings?purged=1#trash' };
+  });
+}
+
 export async function restoreLeadAction(_: FormState, fd: FormData): Promise<FormState> {
   return run(async (actor) => {
     const id = idOf(fd);
@@ -184,6 +191,13 @@ export async function saveSupplierAction(_: FormState, fd: FormData): Promise<Fo
     const next = fd.get('next');
     if (next) return { redirect: safeNext(next, '/suppliers') };
     return fd.get('id') ? 'Supplier saved.' : { redirect: `/suppliers/${id}?saved=1` };
+  });
+}
+
+export async function deleteSupplierAction(_: FormState, fd: FormData): Promise<FormState> {
+  return run(async (actor) => {
+    await C.deleteSupplier(actor, idOf(fd));
+    return { redirect: '/suppliers?deleted=1' };
   });
 }
 

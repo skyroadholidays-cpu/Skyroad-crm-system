@@ -8,7 +8,7 @@ import { QUOTE_STATUS } from '@/lib/constants';
 import { Card, Empty, Flash, PageHeader } from '@/components/ui';
 import { SupplierForm } from '@/components/SupplierForm';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
-import { toggleSupplierAction } from '@/app/actions';
+import { toggleSupplierAction, deleteSupplierAction } from '@/app/actions';
 
 export const metadata = { title: 'Supplier' };
 
@@ -28,6 +28,10 @@ export default async function SupplierPage({ params, searchParams }: { params: P
                     <ActionForm action={toggleSupplierAction}>
                       <input type="hidden" name="id" value={s.id} /><input type="hidden" name="active" value={String(!s.is_active)} />
                       <SubmitButton className="btn btn-ghost">{s.is_active ? 'Hide supplier' : 'Show again'}</SubmitButton>
+                    </ActionForm>
+                    <ActionForm action={deleteSupplierAction} confirm={`Delete ${s.name} permanently? This cannot be undone.`}>
+                      <input type="hidden" name="id" value={s.id} />
+                      <SubmitButton className="btn btn-danger" pendingText="Deleting…">Delete supplier</SubmitButton>
                     </ActionForm>
                   </>} />
       {sp.saved && <Flash>Supplier added.</Flash>}
