@@ -369,6 +369,76 @@ async function main() {
     assert.ok(backup.tables.lead.length > 5 && backup.tables.activity.length > 10);
   });
 
+  // ───────── Claude connector (MCP) and supplier template
+  await test('Claude connector: secret key, protocol handshake and the whole enquiry flow', async () => {
+    const ST = await import('../lib/settings');
+    const { handleRpc, TOOLS } = await import('../lib/connector');
+    assert.equal(await ST.verifyConnectorKey('skc_whatever_wrong_key_123'), false);
+    const key = await ST.createConnectorKey(ACTOR);
+    assert.ok(key.startsWith('skc_') && key.length > 30);
+    assert.equal(await ST.verifyConnectorKey(key), true);
+    const [{ n: plain }] = await sql<{ n: number }>`select count(*)::int as n from crm.app_setting where value = ${key}::text`;
+    assert.equal(plain, 0, 'the key itself is never stored');
+    const call = async (name: string, args: Record<string, unknown> = {}) => {
+      const r = (await handleRpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } })) as any;
+      if (r.result.isError) throw new Error(r.result.content[0].text);
+      return JSON.parse(r.result.content[0].text);
+    };
+    const init = (await handleRpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } })) as any;
+    assert.equal(init.result.serverInfo.name, 'skyroad-crm');
+    assert.equal(await handleRpc({ jsonrpc: '2.0', method: 'notifications/initialized' }), null);
+    const list = (await handleRpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' })) as any;
+    assert.equal(list.result.tools.length, TOOLS.length);
+    assert.ok(list.result.tools.every((t: any) => t.name && t.description && t.inputSchema));
+
+    assert.ok((await call('quick_add_form')).form.includes('1. Name + mobile'));
+    const text = 'Riya Kapoor 98200 11122\nSurat\n10 Jan to 15 Jan\nThailand – 2N Krabi, 3N Phuket\n2 adults\nCustomised package';
+    const c1 = await call('create_enquiry', { text, lead_source: 'WhatsApp' });
+    assert.equal(c1.created, true);
+    assert.equal(c1.enquiry.city, 'Surat');
+    assert.equal(c1.enquiry.nights_plan, '2N Krabi, 3N Phuket');
+    assert.deepEqual(c1.missing, []);
+    const ref = c1.enquiry.ref;
+    assert.match(ref, /^SRQ-\d{5}$/);
+    assert.equal((await call('create_enquiry', { text })).already_existed, true, 'retrying does not duplicate');
+    assert.equal((await call('create_enquiry', { text: 'hello' })).created, false);
+
+    await call('add_supplier', { name: 'Krabi Coast DMC', email: 'res@krabicoast.example', destinations: 'Krabi, Phuket', contact_person: 'Anan' });
+    const found = await call('find_suppliers', { ref });
+    assert.ok(found.suppliers.some((x: any) => x.name === 'Krabi Coast DMC') && found.suppliers.some((x: any) => x.name === 'Siam DMC'));
+    await call('supplier_template', { subject: 'Rates please – {{destination}} {{dates}}', body: 'Hi {{supplier_contact}},\nPlease quote {{destination}} for {{pax}}, {{dates}}.\nNights: {{nights_plan}}\nSpecial requests: {{requirements}}\nThanks, {{signatory}}' });
+    const drafts = await call('draft_supplier_requests', { ref, suppliers: ['Krabi Coast DMC'] });
+    assert.equal(drafts.using_saved_template, true);
+    const d0 = drafts.drafts[0];
+    assert.equal(d0.to, 'res@krabicoast.example');
+    assert.ok(d0.subject.includes(ref), 'reference is always added to the subject');
+    assert.ok(d0.body.startsWith('Hi Anan,') && d0.body.includes('2N Krabi, 3N Phuket') && !d0.body.includes('Special requests'));
+    assert.equal((await call('get_enquiry', { ref })).enquiry.stage, 'New query', 'drafting changes nothing');
+
+    await call('mark_requests_sent', { ref, suppliers: ['Krabi Coast DMC', 'siam dmc'] });
+    assert.equal((await call('get_enquiry', { ref })).enquiry.stage, 'Supplier mail sent');
+    const pend = await call('pending_work');
+    assert.ok(pend.awaiting_supplier_replies.some((x: any) => x.ref === ref && x.gmail_search.includes('from:res@krabicoast.example')));
+    await call('record_supplier_quote', { ref, supplier: 'Krabi Coast DMC', amount: 98000, notes: 'Aonang Villa + Kata Rocks', selected: true });
+    let e = await call('get_enquiry', { ref });
+    assert.equal(e.enquiry.stage, 'Quote received');
+    assert.ok(e.suppliers.some((x: any) => x.supplier === 'Krabi Coast DMC' && x.status === 'Selected' && x.amount === '98000.00'));
+    await call('set_itinerary', { ref, url: 'https://www.canva.com/design/DAG123/view' });
+    e = await call('get_enquiry', { ref });
+    assert.equal(e.enquiry.next_follow_up, today);
+    assert.ok((await call('pending_work')).itineraries_to_send.some((x: any) => x.ref === ref));
+    await call('mark_quote_shared', { ref, quote_amount: 118000 });
+    assert.equal((await call('get_enquiry', { ref })).enquiry.stage, 'Quote / itinerary shared');
+    assert.ok(!(await call('pending_work')).itineraries_to_send.some((x: any) => x.ref === ref));
+    const err = (await handleRpc({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'get_enquiry', arguments: { ref: 'SRQ-99999' } } })) as any;
+    assert.equal(err.result.isError, true);
+    assert.ok(err.result.content[0].text.includes('No enquiry SRQ-99999'));
+    const acts = await C.listActivity((await C.findLeadByRef(ref))!.id);
+    assert.ok(acts.some((x) => x.actor === 'Claude'));
+    await ST.disableConnector(ACTOR);
+    assert.equal(await ST.verifyConnectorKey(key), false, 'turning off revokes the key');
+  });
+
   console.log(results.join('\n'));
   console.log(`\n${passed} application tests passed`);
   end();

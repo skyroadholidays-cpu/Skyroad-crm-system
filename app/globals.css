@@ -541,3 +541,5 @@ fieldset.field { border: 0; padding: 0; margin: 0; }
 .order-guide li.miss .og-n { background: var(--warn); }
 .warn-text { color: var(--warn); font-weight: 600; }
 .ok-text { color: var(--in); font-weight: 600; }
+.order-textarea::placeholder { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86rem; line-height: 1.6; }
+textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86rem; line-height: 1.55; }

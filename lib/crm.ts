@@ -689,3 +689,54 @@ export async function exportAll(): Promise<string> {
 }
 
 export const ALLOWED_INCLUSIONS = INCLUSIONS;
+
+// ───────────────────────────── for the Claude connector ─────────────────────────────
+
+/** Finds an enquiry by "SRQ-00004", "srq 4", "4" or its internal id. */
+export async function findLeadByRef(ref: string | number): Promise<LeadRow | null> {
+  const s = String(ref).trim();
+  const m = s.match(/^(?:srq)?[\s-]*0*(\d{1,9})$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const no = 'SRQ-' + String(n).padStart(5, '0');
+  const [l] = await selectLeads(db(), `l.deleted_at is null and (l.lead_no = $1::text ${/^\d+$/.test(s) ? 'or l.id = $2::int' : ''})`, /^\d+$/.test(s) ? [no, n] : [no], 'order by (l.lead_no = $1::text) desc limit 1');
+  return l ?? null;
+}
+
+/** Active suppliers whose "destinations covered" mention the destination (or any of its nights-plan places). */
+export async function suppliersFor(destination: string, nightsPlan?: string | null): Promise<SupplierRow[]> {
+  const words = `${destination} ${nightsPlan ?? ''}`.toLowerCase().replace(/\d+\s*n\b/g, ' ').split(/[^a-z]+/).filter((w) => w.length > 2);
+  const all = await listSuppliers(false);
+  return all.filter((s) => s.destinations && words.some((w) => s.destinations!.toLowerCase().includes(w)));
+}
+
+export async function findSupplier(nameOrId: string | number): Promise<SupplierRow | null> {
+  const all = await listSuppliers(true);
+  const s = String(nameOrId).trim().toLowerCase();
+  return all.find((x) => String(x.id) === s) ?? all.find((x) => x.name.toLowerCase() === s)
+    ?? all.find((x) => x.name.toLowerCase().includes(s)) ?? all.find((x) => !!x.email && x.email.toLowerCase() === s) ?? null;
+}
+
+/** Saves the itinerary link and sets a "send it to the client" follow-up for today. */
+export async function setItinerary(actor: string, leadId: number, url: string): Promise<void> {
+  if (!/^https?:\/\//i.test(url)) throw new UserError('The itinerary link should start with https://');
+  await withTx(actor, async (tx) => {
+    const rows = await tx`update crm.lead set itinerary_url = ${url.slice(0, 500)}::text, next_follow_up = ${todayIST()}::date,
+                            follow_up_note = 'Send the itinerary to the client', updated_by = ${actor}::text
+                          where id = ${leadId}::int and deleted_at is null returning id`;
+    if (!rows.length) throw new UserError('This enquiry no longer exists.');
+    await log(tx, leadId, 'quote', 'Itinerary ready – send it to the client', actor, { url });
+  });
+}
+
+/** What the mail checker needs: requests waiting for replies, and itineraries waiting to go to clients. */
+export async function pendingWork() {
+  const awaiting = await db()<{ lead_id: number; lead_no: string; client_name: string; destination: string; stage: string; supplier_id: number; supplier: string; email: string | null; requested_at: string }>`
+    select l.id as lead_id, l.lead_no, l.client_name, l.destination, l.stage, s.id as supplier_id, s.name as supplier, s.email, q.requested_at::text
+    from crm.supplier_quote q join crm.supplier s on s.id = q.supplier_id join crm.v_lead l on l.id = q.lead_id
+    where q.status = 'requested' and l.deleted_at is null and l.stage not in ('lost', 'completed')
+    order by q.requested_at`;
+  const toSend = await selectLeads(db(), `l.deleted_at is null and l.itinerary_url is not null and l.quote_shared_at is null and crm.stage_rank(l.stage) between 1 and 3`, [], 'order by l.updated_at');
+  const newOnes = await selectLeads(db(), `l.deleted_at is null and l.stage = 'new_query'`, [], 'order by l.created_at');
+  return { awaiting, toSend, newOnes };
+}

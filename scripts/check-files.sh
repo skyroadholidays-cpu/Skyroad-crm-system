@@ -25,6 +25,7 @@ app/actions.ts
 app/api/backup/route.ts
 app/api/export/route.ts
 app/api/health/route.ts
+app/api/mcp/[key]/route.ts
 app/error.tsx
 app/globals.css
 app/icon.svg
@@ -41,8 +42,13 @@ components/SupplierForm.tsx
 components/client.tsx
 components/ui.tsx
 db/migrations/001_init.sql
+db/migrations/002_package_transfers.sql
+db/migrations/003_srq_numbers.sql
+db/migrations/004_gapless_numbers.sql
+db/migrations/005_connector_and_templates.sql
 db/tests/business_rules.sql
 lib/auth-core.ts
+lib/connector.ts
 lib/constants.ts
 lib/crm.ts
 lib/csv.ts
@@ -53,6 +59,7 @@ lib/money.ts
 lib/quick-parse.ts
 lib/reports.ts
 lib/session.ts
+lib/settings.ts
 lib/sql-types.ts
 lib/templates.ts
 next.config.mjs

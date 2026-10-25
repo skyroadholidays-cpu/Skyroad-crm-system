@@ -58,7 +58,82 @@ function rupees(v: string | null | undefined) {
 const firstName = (n: string) => n.trim().split(/\s+/)[0];
 
 /** The standard rate request you send to a supplier / DMC. */
-export function supplierRequest(l: LeadForMessage, supplierContact?: string | null) {
+/** Your own standard supplier mail, saved once in Settings. {{placeholders}} are filled per enquiry. */
+export interface MailTemplate { subject: string; body: string }
+
+/** Starting point shown in Settings – the same mail the app sends without a saved template. */
+export const DEFAULT_SUPPLIER_TEMPLATE: MailTemplate = {
+  subject: 'Rate request – {{destination}} | {{dates}} | {{pax}} | {{ref}}',
+  body: [
+    'Dear {{supplier_contact}},', '', 'Greetings from {{business}}!', '', 'Please share your best rates for the below enquiry:', '',
+    'Destination: {{destination}}', 'Travel dates: {{dates}}', 'Travellers: {{pax}}', 'Itinerary / nights: {{nights_plan}}',
+    'Hotel category: {{hotel_category}}', 'Package type: {{package}}', 'Inclusions required: {{inclusions}}', 'Special requests: {{requirements}}', '',
+    'Kindly include:', '• Hotel options with room category and meal plan', '• Per-person and total cost, with inclusions & exclusions',
+    '• Transfers and sightseeing details (SIC / private)', '• Quote validity and cancellation policy', '', 'Our reference: {{ref}}', '',
+    'Looking forward to your quick response.', '', 'Warm regards,', '{{signatory}}', '{{business}}', '{{email}}',
+  ].join('\n'),
+};
+
+export const TEMPLATE_VARS: { key: string; help: string }[] = [
+  { key: 'supplier_contact', help: 'Contact person (or "Team")' },
+  { key: 'supplier_name', help: 'Supplier company' },
+  { key: 'ref', help: 'Enquiry no. e.g. SRQ-00004 (always keep it in the subject)' },
+  { key: 'destination', help: 'Destination' },
+  { key: 'dates', help: '1 Dec 2026 – 6 Dec 2026 (5N / 6D)' },
+  { key: 'start_date', help: 'Travel start' },
+  { key: 'end_date', help: 'Travel end' },
+  { key: 'duration', help: '5N / 6D' },
+  { key: 'pax', help: '2 Adults, 1 Child (age 6)' },
+  { key: 'nights_plan', help: '2N Krabi, 3N Phuket' },
+  { key: 'hotel_category', help: '4 Star' },
+  { key: 'package', help: 'Customised package / Hotel only …' },
+  { key: 'inclusions', help: 'Hotel, Airport transfers, …' },
+  { key: 'requirements', help: 'Special requests' },
+  { key: 'client_city', help: "Client's city" },
+  { key: 'signatory', help: BUSINESS.signatory },
+  { key: 'business', help: BUSINESS.name },
+  { key: 'email', help: BUSINESS.email },
+];
+
+export function templateValues(l: LeadForMessage & { city?: string | null }, supplier?: { contact_person?: string | null; name?: string | null }): Record<string, string> {
+  return {
+    supplier_contact: supplier?.contact_person?.trim() || 'Team',
+    supplier_name: supplier?.name ?? '',
+    ref: l.lead_no,
+    destination: l.destination,
+    dates: datesText(l),
+    start_date: d(l.travel_start),
+    end_date: d(l.travel_end),
+    duration: durationLabel(l.travel_start, l.travel_end),
+    pax: paxText(l),
+    nights_plan: l.nights_plan ?? '',
+    hotel_category: l.hotel_category ?? '',
+    package: l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : '',
+    inclusions: (l.inclusions ?? []).join(', '),
+    requirements: l.requirements ?? '',
+    client_city: l.city ?? '',
+    signatory: BUSINESS.signatory,
+    business: BUSINESS.name,
+    email: BUSINESS.email,
+  };
+}
+
+/** Fills {{name}} placeholders; lines whose only placeholder came out empty are dropped. */
+export function renderTemplate(tpl: string, vals: Record<string, string>): string {
+  return tpl.split('\n').flatMap((line) => {
+    const keys = [...line.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]);
+    const out = line.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k) => (k in vals ? vals[k] : m));
+    return keys.length && keys.every((k) => k in vals && !vals[k]) && /:\s*$/.test(out.trim()) ? [] : [out];
+  }).join('\n');
+}
+
+export function supplierRequest(l: LeadForMessage & { city?: string | null }, supplierContact?: string | null, custom?: MailTemplate | null, supplierName?: string | null) {
+  if (custom?.body?.trim()) {
+    const vals = templateValues(l, { contact_person: supplierContact, name: supplierName });
+    let subject = renderTemplate(custom.subject?.trim() || 'Rate request – {{destination}} | {{dates}} | {{pax}} | {{ref}}', vals);
+    if (!subject.includes(l.lead_no)) subject += ` | ${l.lead_no}`; // keeps supplier replies traceable
+    return { subject, body: renderTemplate(custom.body, vals) };
+  }
   const pkg = l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : 'Package as per itinerary';
   const lines = [
     `Dear ${supplierContact?.trim() || 'Team'},`,

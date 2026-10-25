@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { ActionForm, SubmitButton } from './ActionForm';
 import type { FormState } from '@/app/actions';
-import { parseEnquiry, durationLabel, slotsFound, ORDER, SLOT_LABEL, ORDER_TEMPLATE, type ParsedEnquiry, type Slot } from '@/lib/quick-parse';
+import { parseEnquiry, durationLabel, slotsFound, ORDER, SLOT_LABEL, ORDER_TEMPLATE, ORDER_PLACEHOLDER, type ParsedEnquiry, type Slot } from '@/lib/quick-parse';
 import { LEAD_SOURCES, HOTEL_CATEGORIES, PACKAGE_TYPES, INCLUSIONS, PRIORITIES, inclusionsForPackage } from '@/lib/constants';
 
 export interface LeadFormValues {
@@ -70,7 +70,7 @@ export function LeadForm({ action, mode, values, today, idem }: {
               ))}
             </ol>
             <textarea value={paste} onChange={(e) => { setPaste(e.target.value); setFound(null); }} rows={6}
-                      placeholder={ORDER_TEMPLATE} />
+                      placeholder={ORDER_PLACEHOLDER} className="order-textarea" />
           </label>
           <div className="row">
             <button type="button" className="btn btn-primary" onClick={fill} disabled={!paste.trim()}>Fill the form ↓</button>

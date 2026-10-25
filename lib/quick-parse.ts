@@ -137,6 +137,15 @@ export const ORDER = ['name', 'city', 'dates', 'destination', 'pax', 'package'] 
 export type Slot = (typeof ORDER)[number];
 export const SLOT_LABEL: Record<Slot, string> = { name: 'Name', city: 'City', dates: 'Dates', destination: 'Destination', pax: 'Travellers', package: 'Package' };
 export const ORDER_TEMPLATE = 'Rahul Shah 98765 43210\nMumbai\n1 Dec to 6 Dec\nThailand – 2N Krabi, 3N Phuket\n2 adults 1 child\nCustomised package';
+/** Placeholder for the quick-add box: the order, with an example for each line. */
+export const ORDER_PLACEHOLDER = [
+  '1. Name + mobile   →  Rahul Shah 98765 43210',
+  '2. City            →  Mumbai',
+  '3. Dates           →  1 Dec to 6 Dec',
+  '4. Destination     →  Thailand – 2N Krabi, 3N Phuket',
+  '5. Travellers      →  2 adults 1 child',
+  '6. Package         →  Customised / Hotel / Transfers / Flights / Visa',
+].join('\n');
 
 const HEADER_LINE = /^(new\s*(q|query|enquiry|inquiry|lead)|enquiry|inquiry|query|lead)\b[\s:.\-!]*$/i;
 const LABELS: [Slot, RegExp][] = [

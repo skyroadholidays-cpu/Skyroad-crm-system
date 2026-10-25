@@ -8,6 +8,8 @@ import { requireUser, setSessionCookie, clearSessionCookie, readSessionToken, cl
 import { friendlyError, UserError } from '@/lib/db-core';
 import * as auth from '@/lib/auth-core';
 import * as C from '@/lib/crm';
+import * as ST from '@/lib/settings';
+import { headers } from 'next/headers';
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -221,5 +223,31 @@ export async function deletePaymentAction(_: FormState, fd: FormData): Promise<F
   return run(async (actor) => {
     await C.deletePayment(actor, idOf(fd));
     return 'Payment deleted.';
+  });
+}
+
+// ───────────────────────── Claude connector & templates ─────────────────────────
+
+export async function createConnectorAction(_: FormState): Promise<FormState> {
+  return run(async (actor) => {
+    const key = await ST.createConnectorKey(actor);
+    const h = await headers();
+    const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'crm.skyroadholidays.com';
+    const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
+    return `Your connector address (shown only once – copy it now): ${proto}://${host}/api/mcp/${key}`;
+  });
+}
+
+export async function disableConnectorAction(_: FormState): Promise<FormState> {
+  return run(async (actor) => {
+    await ST.disableConnector(actor);
+    return 'Connector turned off. Claude can no longer reach the CRM until you create a new address.';
+  });
+}
+
+export async function saveTemplateAction(_: FormState, fd: FormData): Promise<FormState> {
+  return run(async (actor) => {
+    await ST.saveSupplierTemplate(actor, String(fd.get('subject') ?? ''), String(fd.get('body') ?? ''));
+    return String(fd.get('body') ?? '').trim() ? 'Template saved. Every supplier mail now uses it.' : 'Template cleared – the built-in standard mail is used again.';
   });
 }

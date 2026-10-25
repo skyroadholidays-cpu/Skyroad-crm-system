@@ -8,6 +8,7 @@ import { fmtDate, fmtDateTime, todayIST, addDays } from '@/lib/dates';
 import { inr } from '@/lib/money';
 import { durationLabel } from '@/lib/quick-parse';
 import * as T from '@/lib/templates';
+import { getSupplierTemplate } from '@/lib/settings';
 import {
   ALL_STATUSES, STAGE_LABEL, PACKAGE_LABEL, PAYMENT_KINDS, PAYMENT_MODES, QUOTE_STATUS, CHANNELS, ACTIVITY_LABEL, LOGGABLE,
   stageRank,
@@ -49,6 +50,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const [quotes, payments, activity, suppliers] = await inSeries(
     () => C.listQuotes(l.id), () => C.listPayments(l.id), () => C.listActivity(l.id), () => C.listSuppliers(false),
   );
+  const tpl = await getSupplierTemplate();
   const today = todayIST();
   const deleted = !!l.deleted_at;
   const step = nextStep(l);
@@ -110,7 +112,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             {quotes.length === 0 ? <p className="muted small" style={{ marginTop: 0 }}>No supplier has been asked yet.</p> : (
               <div className="quotes">
                 {quotes.map((q) => {
-                  const msg = T.supplierRequest(l, q.contact_person);
+                  const msg = T.supplierRequest(l, q.contact_person, tpl, q.supplier_name);
                   const waNo = q.whatsapp || q.phone;
                   return (
                     <div key={q.id} className={`quote q-${q.status}`}>
@@ -178,7 +180,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
                 )}
                 <details className="preview">
                   <summary>Preview the standard supplier message</summary>
-                  {(() => { const m = T.supplierRequest(l, null); return <><p className="small"><strong>Subject:</strong> {m.subject}</p><pre className="msg">{m.body}</pre><CopyButton text={`${m.subject}\n\n${m.body}`} label="Copy message" /></>; })()}
+                  {(() => { const m = T.supplierRequest(l, null, tpl); return <><p className="small"><strong>Subject:</strong> {m.subject}</p><pre className="msg">{m.body}</pre><CopyButton text={`${m.subject}\n\n${m.body}`} label="Copy message" /></>; })()}
                 </details>
               </details>
             )}

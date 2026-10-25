@@ -155,7 +155,7 @@ class Conn {
     return p;
   }
 
-  end() { this.sock.write(this.msg('X', Buffer.alloc(0))); this.sock.end(); }
+  end() { if (this.sock.writableEnded || this.sock.destroyed) return; this.sock.write(this.msg('X', Buffer.alloc(0))); this.sock.end(); }
 }
 
 function build(strings: TemplateStringsArray, values: unknown[]) {

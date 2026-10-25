@@ -7,7 +7,9 @@ import { fmtDateTime } from '@/lib/dates';
 import { STAGES, STAGE_LABEL, STAGE_HELP } from '@/lib/constants';
 import { Card, PageHeader } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
-import { changePasswordAction, signOutOthersAction, restoreLeadAction } from '@/app/actions';
+import { changePasswordAction, signOutOthersAction, restoreLeadAction, createConnectorAction, disableConnectorAction, saveTemplateAction } from '@/app/actions';
+import { connectorStatus, getSupplierTemplate } from '@/lib/settings';
+import { DEFAULT_SUPPLIER_TEMPLATE, TEMPLATE_VARS } from '@/lib/templates';
 
 export const metadata = { title: 'Settings' };
 
@@ -32,6 +34,8 @@ export default async function SettingsPage() {
              case when a.table_name = 'lead' then a.record_id else coalesce(a.new_data->>'lead_id', a.old_data->>'lead_id') end as lead_id
       from crm.audit_log a order by a.at desc, a.id desc limit 40`,
   );
+  const conn = await connectorStatus();
+  const tpl = (await getSupplierTemplate()) ?? null;
   return (
     <div className="stack">
       <PageHeader title="Settings" subtitle={`Signed in as ${user.username}`} />
@@ -58,6 +62,40 @@ export default async function SettingsPage() {
           </ActionForm>
         </Card>
       </div>
+
+      <Card title="Claude connector" actions={<span className={`status ${conn.enabled ? 's-done' : 's-pending'}`}>{conn.enabled ? 'On' : 'Off'}</span>}>
+        <p style={{ marginTop: 0 }}>Lets Claude create enquiries, prepare supplier mails, record quotes and attach itineraries in this CRM for you. Claude only ever prepares Gmail <strong>drafts</strong> – you review and send.</p>
+        {conn.enabled
+          ? <p className="small">Address ending <code>…{conn.hint}</code> created {fmtDateTime(conn.createdAt)}{conn.lastUsedAt ? ` · last used ${fmtDateTime(conn.lastUsedAt)}` : ' · not used yet'}.</p>
+          : <p className="small muted">Off – nothing outside this site can reach your CRM.</p>}
+        <div className="row">
+          <ActionForm action={createConnectorAction} confirm={conn.enabled ? 'Create a new address? The old one stops working immediately.' : undefined}>
+            <SubmitButton className="btn btn-primary" pendingText="Creating…">{conn.enabled ? 'Create a new address' : 'Turn on – create address'}</SubmitButton>
+          </ActionForm>
+          {conn.enabled && (
+            <ActionForm action={disableConnectorAction} confirm="Turn the connector off? Claude will no longer be able to reach the CRM.">
+              <SubmitButton className="btn btn-ghost" pendingText="…">Turn off</SubmitButton>
+            </ActionForm>
+          )}
+        </div>
+        <p className="muted small">Then in Claude: <strong>Settings → Connectors → Add custom connector</strong>, name it “Skyroad CRM” and paste the address. Treat the address like a password.</p>
+      </Card>
+
+      <Card title="Supplier email template">
+        <p style={{ marginTop: 0 }}>Your standard rate-request mail. Write it once with <code>{'{{placeholders}}'}</code> – each enquiry fills them in. Used for Claude’s Gmail drafts and the Gmail / WhatsApp buttons on each enquiry.</p>
+        <ActionForm action={saveTemplateAction} className="form">
+          <label className="field"><span className="field-label">Subject (keep {'{{ref}}'} in it so replies can be matched)</span>
+            <input name="subject" defaultValue={tpl?.subject || DEFAULT_SUPPLIER_TEMPLATE.subject} maxLength={300} /></label>
+          <label className="field"><span className="field-label">Body</span>
+            <textarea name="body" rows={16} defaultValue={tpl?.body ?? DEFAULT_SUPPLIER_TEMPLATE.body} maxLength={8000} className="mono" /></label>
+          <details className="small"><summary>Placeholders you can use</summary>
+            <table><tbody>{TEMPLATE_VARS.map((v) => <tr key={v.key}><td><code>{`{{${v.key}}}`}</code></td><td className="muted">{v.help}</td></tr>)}</tbody></table>
+            <p className="muted">A line like “Special requests: {'{{requirements}}'}” is left out automatically when the enquiry has none.</p>
+          </details>
+          <div className="form-actions"><SubmitButton>{tpl ? 'Save template' : 'Save as my template'}</SubmitButton></div>
+        </ActionForm>
+        <p className="muted small">{tpl ? 'Using your saved template.' : 'Not saved yet – the built-in standard mail above is being used.'} To go back to the built-in mail, empty the body and save.</p>
+      </Card>
 
       <Card title="Backup & export">
         <p style={{ marginTop: 0 }}>Download every enquiry, supplier, quote, payment and the full timeline and change history.</p>
