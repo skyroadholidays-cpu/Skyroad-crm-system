@@ -67,9 +67,9 @@ export interface MailTemplate { subject: string; body: string }
 export const DEFAULT_SUPPLIER_TEMPLATE: MailTemplate = {
   subject: '{{destination}} Package - {{days}} Days - {{client_name}}',
   body: [
-    'Hi {{supplier_contact}},', '', 'Greetings from Skyroad Holidays.', '', 'Kindly give us the quote for the below query.', '',
-    'Travel dates: {{start_date}} to {{end_date}}', '', 'No of Pax: {{pax_short}}', '', 'No of Rooms: {{rooms}}', '',
-    'Meal Plan: {{meal_plan}}', '', 'Hotel Category: {{hotel_category}}', '', 'Destination:', '{{route}}', '',
+    'Hi {{supplier_contact}},', '', 'Greetings from Skyroad Holidays. Kindly give us the quote for the below query.', '',
+    'Travel dates: {{start_date}} to {{end_date}}', 'No of Pax: {{pax_short}}', 'No of Rooms: {{rooms}}',
+    'Meal Plan: {{meal_plan}}', 'Hotel Category: {{hotel_category}}', 'Destination: {{route}}',
     '{{requirements}}', '', 'Kindly give us your best rates.', '', 'Regards,', '{{signatory}}', '{{business}}', '{{email}}',
   ].join('\n'),
 };
@@ -117,7 +117,10 @@ export function templateValues(l: LeadForMessage & { city?: string | null }, sup
     hotel_category: l.hotel_category ?? '',
     package: l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : '',
     inclusions: (l.inclusions ?? []).join(', '),
-    requirements: l.requirements ?? '',
+    // special requests only: drop lines that repeat a field already in the mail, and "Notes:" labels
+    requirements: (l.requirements ?? '').split(/\r?\n/).map((x) => x.trim())
+      .filter((x) => x && !/^(hotel(\s*category)?|category|rooms?|no\.? of rooms|meal\s*plan|budget|lead\s*source|source)\s*[:\-–]/i.test(x))
+      .map((x) => x.replace(/^(notes?|remarks?|special\s*requests?)\s*[:\-–]\s*/i, '')).join('\n'),
     client_city: l.city ?? '',
     client_name: l.client_name,
     days: nightsOf(l) === null ? '' : two(nightsOf(l)! + 1),
@@ -125,7 +128,8 @@ export function templateValues(l: LeadForMessage & { city?: string | null }, sup
     pax_short: paxShort(l),
     rooms: l.rooms ? two(l.rooms) : '',
     meal_plan: l.meal_plan ?? '',
-    route: l.nights_plan || l.destination,
+    // "2N Krabi, 3N Phuket" as is; a bare "5N" gets the destination in front ("Bali - 5N")
+    route: l.nights_plan ? (/[A-Za-z]{3,}/.test(l.nights_plan.replace(/\b\d+\s*N\b/gi, '')) ? l.nights_plan : `${l.destination} - ${l.nights_plan}`) : l.destination,
     signatory: BUSINESS.signatory,
     business: BUSINESS.name,
     email: BUSINESS.email,

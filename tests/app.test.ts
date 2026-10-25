@@ -83,6 +83,10 @@ async function main() {
     const k = parseEnquiry('Kashmir\n15/04/2027 to 20/04/2027\ncouple honeymoon\n3N Srinagar + 2N Gulmarg', '2026-10-25');
     assert.deepEqual([k.trip_type, k.adults, k.travel_end], ['domestic', 2, '2027-04-20']);
     assert.deepEqual(parseEnquiry('', today), {});
+    // the numbered "new q" form with labels and optional lines
+    const f = parseEnquiry('1. Name + mobile: Rusi Jasani\n2. City: Ahmedabad\n3. Dates: 17 Jan to 22 Jan 2027\n4. Destination (with nights): Bali - 5N\n5. Pax: 02\n6. Package: Tour Package\nHotel category: 4 star\nRooms: 01\nMeal plan: CP \nBudget: \nLead source: Referral\nNotes: private pool villa room in Gili', '2026-10-25');
+    assert.deepEqual([f.client_name, f.city, f.destination, f.adults, f.package_type, f.rooms, f.meal_plan, f.hotel_category, f.requirements],
+      ['Rusi Jasani', 'Ahmedabad', 'Bali', 2, 'land_package', 1, 'CP', '4 Star', 'private pool villa room in Gili']);
   });
   await test('quick-add reads the 6-line order exactly (name, city, dates, destination, travellers, package)', () => {
     const r = parseEnquiry('Rahul Shah 98765 43210\nMumbai\n1 Dec to 6 Dec\nThailand – 2N Krabi, 3N Phuket\n2 adults 1 child\nCustomised package', '2026-10-25');
@@ -103,9 +107,9 @@ async function main() {
     const m = T.supplierRequest({ ...l, rooms: 2, meal_plan: 'MAP', requirements: 'Pickup and drop at Krabi airport' }, 'Somchai');
     assert.equal(m.subject, 'Thailand Package - 06 Days - Asha Rao | SRQ-00001');
     for (const s of ['Hi Somchai,', 'Travel dates: 1 Dec 2026 to 6 Dec 2026', 'No of Pax: 02 Adults + 01 kid (6 yrs)', 'No of Rooms: 02', 'Meal Plan: MAP',
-      'Hotel Category: 4 Star', 'Destination:\n2N Krabi, 3N Phuket', 'Pickup and drop at Krabi airport', 'Kindly give us your best rates.', 'sales@skyroadholidays.com']) assert.ok(m.body.includes(s), s);
+      'Hotel Category: 4 Star', 'Destination: 2N Krabi, 3N Phuket', 'Pickup and drop at Krabi airport', 'Kindly give us your best rates.', 'sales@skyroadholidays.com']) assert.ok(m.body.includes(s), s);
     const thin = T.supplierRequest({ ...l, nights_plan: null, hotel_category: null }, null);
-    assert.ok(!thin.body.includes('No of Rooms') && !thin.body.includes('Meal Plan') && thin.body.includes('Destination:\nThailand'), 'empty lines are left out');
+    assert.ok(!thin.body.includes('No of Rooms') && !thin.body.includes('Meal Plan') && thin.body.includes('Destination: Thailand'), 'empty lines are left out');
     const k2 = parseEnquiry('Mr Sourabh 98250 12345\nAhmedabad\n12 Nov 2026 to 18 Nov 2026\nKerala – 2N Munnar, 1N Thekkady, 3N TRV/Kovalam\n4 adults 2 kids (3,7)\nCustomised package, 2 rooms, MAP, 3 star deluxe\nPickup and drop off at Cochin airport', '2026-10-25');
     assert.deepEqual([k2.nights_plan, k2.rooms, k2.meal_plan, k2.hotel_category, k2.requirements], ['2N Munnar, 1N Thekkady, 3N TRV/Kovalam', 2, 'MAP', '3 star deluxe', 'Pickup and drop off at Cochin airport']);
     assert.ok(T.clientQuote(l).includes('₹1,45,000'));

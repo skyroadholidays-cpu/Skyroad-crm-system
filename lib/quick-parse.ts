@@ -152,13 +152,18 @@ export const ORDER_PLACEHOLDER = [
 
 const HEADER_LINE = /^(new\s*(q|query|enquiry|inquiry|lead)|enquiry|inquiry|query|lead)\b[\s:.\-!]*$/i;
 const LABELS: [Slot, RegExp][] = [
-  ['name', /^(name|client|guest|customer)\s*[:\-–]\s*/i],
-  ['city', /^(city|from city|from|location|based in)\s*[:\-–]\s*/i],
-  ['dates', /^(dates?|travel dates?|when|travel)\s*[:\-–]\s*/i],
-  ['destination', /^(destination|dest|place|trip|to|going to)\s*[:\-–]\s*/i],
-  ['pax', /^(pax|no\.? of pax|travell?ers|people|persons|guests|members)\s*[:\-–]\s*/i],
-  ['package', /^(package|service|services|type|need|needs|requirement|booking)\s*[:\-–]\s*/i],
+  ['name', /^(name(?:\s*(?:\+|&|and|\/)\s*(?:mobile|phone|number|contact|no\.?))?|client|guest|customer)(?:\s*\([^)]*\))?\s*[:\-–]\s*/i],
+  ['city', /^(city|from city|from|location|based in)(?:\s*\([^)]*\))?\s*[:\-–]\s*/i],
+  ['dates', /^(dates?|travel dates?|when|travel)(?:\s*\([^)]*\))?\s*[:\-–]\s*/i],
+  ['destination', /^(destination|dest|place|trip|to|going to)(?:\s*\([^)]*\))?\s*[:\-–]\s*/i],
+  ['pax', /^(pax|no\.? of pax|travell?ers|people|persons|guests|members)(?:\s*\([^)]*\))?\s*[:\-–]\s*/i],
+  ['package', /^(package|service|services|type|need|needs|booking)(?:\s*\([^)]*\))?\s*[:\-–]\s*/i],
 ];
+/** "1. ", "2) " at the start of a line (the numbered quick form). */
+const LINE_NUMBER = /^\d{1,2}\s*[.)]\s+/;
+/** Optional labelled lines of the quick form that are read elsewhere (never a main slot, never a special request). */
+const EXTRA_LABEL = /^(hotel(?:\s*category)?|category|star|rooms?|no\.? of rooms|meal\s*plan|meals?|budget|lead\s*source|source)\s*[:\-–]/i;
+const NOTE_LABEL = /^(notes?|remarks?|special\s*requests?|requirements?)\s*[:\-–]\s*/i;
 const NO_DATES = /\b(tbc|tba|flexible|not decided|not fixed|any ?time|open)\b/i;
 
 /** "2 rooms", "MAP", "breakfast", "half board" … anywhere in the text. */
@@ -221,14 +226,19 @@ export function parsePackage(line: string): { package_type?: ParsedEnquiry['pack
 }
 
 function parseOrdered(input: string, today: string): ParsedEnquiry | null {
-  const lines = input.replace(/\r/g, '').split(/\n|\s*\|\s*/).map((l) => l.trim()).filter((l) => l && !HEADER_LINE.test(l));
+  const lines = input.replace(/\r/g, '').split(/\n|\s*\|\s*/).map((l) => l.trim().replace(LINE_NUMBER, '').trim())
+    // drop empty labelled lines such as "Budget:" left blank
+    .filter((l) => l && !HEADER_LINE.test(l) && !/^[A-Za-z .+&/()]{2,40}[:\-–]\s*$/.test(l));
   if (lines.length < 3) return null;
   const labelled = lines.filter((l) => LABELS.some(([, re]) => re.test(l))).length;
   if (labelled < 2 && !(lines.length >= 4 && isDateLine(lines[2], today))) return null;
 
   const slot: Partial<Record<Slot, string>> = {};
   const free: string[] = [];
+  const notes: string[] = [];
   for (const line of lines) {
+    if (EXTRA_LABEL.test(line)) continue; // read below from the whole text
+    if (NOTE_LABEL.test(line)) { notes.push(line.replace(NOTE_LABEL, '').trim()); continue; }
     const lab = LABELS.find(([k, re]) => re.test(line) && !slot[k]);
     if (lab) slot[lab[0]] = line.replace(lab[1], '').trim();
     else free.push(line);
@@ -266,7 +276,8 @@ function parseOrdered(input: string, today: string): ParsedEnquiry | null {
     const legs = [...t.matchAll(legRe)].map((m) => ({ n: Number(m[1]), place: m[2].trim().replace(/\b\w/g, (c) => c.toUpperCase()), at: m.index ?? 0 }))
       .filter((x) => x.place && !/^(stay|d|days?)$/i.test(x.place));
     if (legs.length) out.nights_plan = legs.map((x) => `${x.n}N ${x.place}`).join(', ');
-    const head = (legs.length ? t.slice(0, legs[0].at) : t).replace(/[\s,;:\-–(]+$/, '').trim();
+    // "Bali - 5N" (total nights, no places): keep "Bali" as the destination
+    const head = (legs.length ? t.slice(0, legs[0].at) : t.replace(/\s*[-–,(]?\s*\d{1,2}\s*(?:n|nts?|nights?)\b\)?\s*$/i, '')).replace(/[\s,;:\-–(]+$/, '').trim();
     out.destination = (head || legs.map((x) => x.place).join(' + ')).slice(0, 120);
     const total = legs.reduce((a, x) => a + x.n, 0);
     if (out.travel_start && !out.travel_end && total) out.travel_end = addDays(out.travel_start, total);
@@ -290,7 +301,7 @@ function parseOrdered(input: string, today: string): ParsedEnquiry | null {
   if (free2.budget) { out.budget = free2.budget; out.budget_basis = free2.budget_basis; }
   if (free2.lead_source) out.lead_source = free2.lead_source;
   Object.assign(out, parseRoomsMeal(all));
-  const req = extra.filter((x) => !ROOMS_MEAL_ONLY.test(x));
+  const req = [...extra.filter((x) => !ROOMS_MEAL_ONLY.test(x)), ...notes.filter(Boolean)];
   if (req.length) out.requirements = req.join('\n').slice(0, 2000);
   return out;
 }
