@@ -30,7 +30,7 @@ function summary(l: C.LeadRow) {
     ref: l.lead_no, stage: STAGE_LABEL[l.stage], client: l.client_name, phone: l.phone, email: l.email, city: l.city,
     destination: l.destination, nights_plan: l.nights_plan, dates: datesText(l), travel_start: l.travel_start, travel_end: l.travel_end,
     travellers: paxText(l), package: l.package_type ? PACKAGE_LABEL[l.package_type] : null, inclusions: l.inclusions,
-    hotel_category: l.hotel_category, requirements: l.requirements, quote_amount: l.quote_amount, itinerary_url: l.itinerary_url,
+    hotel_category: l.hotel_category, rooms: l.rooms, meal_plan: l.meal_plan, requirements: l.requirements, quote_amount: l.quote_amount, itinerary_url: l.itinerary_url,
     quote_shared_at: l.quote_shared_at, booking_ref: l.booking_ref, paid: l.paid, balance_due: l.balance_due,
     next_follow_up: l.next_follow_up, follow_up_note: l.follow_up_note,
   };
@@ -63,7 +63,7 @@ export const TOOLS: Tool[] = [
         adults: r.adults !== undefined ? String(r.adults) : undefined, children: r.children !== undefined ? String(r.children) : undefined,
         child_ages: r.child_ages, infants: r.infants !== undefined ? String(r.infants) : undefined, nights_plan: r.nights_plan,
         hotel_category: r.hotel_category, package_type: r.package_type, inclusions: (r.inclusions ?? []).join(','), budget: r.budget,
-        budget_basis: r.budget_basis, requirements: r.requirements, lead_source: str(a, 'lead_source') || r.lead_source,
+        budget_basis: r.budget_basis, requirements: r.requirements, rooms: r.rooms !== undefined ? String(r.rooms) : undefined, meal_plan: r.meal_plan, lead_source: str(a, 'lead_source') || r.lead_source,
         next_follow_up: addDays(todayIST(), 1), follow_up_note: 'Send supplier requests', notes: `Created by Claude from:\n${text}`,
       };
       const input = C.parseLeadInput((k) => vals[k]);

@@ -20,7 +20,7 @@ export interface LeadRow {
   destination: string; trip_type: string | null; travel_start: string | null; travel_end: string | null; flexible_dates: boolean;
   adults: number; children: number; child_ages: string | null; infants: number; pax: number; nights: number | null;
   nights_plan: string | null; hotel_category: string | null; package_type: string | null; inclusions: string[];
-  budget: string | null; budget_basis: 'total' | 'per_person'; requirements: string | null;
+  budget: string | null; budget_basis: 'total' | 'per_person'; requirements: string | null; rooms: number | null; meal_plan: string | null;
   quote_amount: string | null; itinerary_url: string | null; quote_shared_at: string | null;
   booking_ref: string | null; confirmed_at: string | null; next_follow_up: string | null; follow_up_note: string | null;
   lost_reason: string | null; closed_at: string | null; notes: string | null;
@@ -36,7 +36,7 @@ const LEAD_COLS = (a: string) => `
   ${a}.destination, ${a}.trip_type, ${a}.travel_start::text, ${a}.travel_end::text, ${a}.flexible_dates,
   ${a}.adults, ${a}.children, ${a}.child_ages, ${a}.infants, ${a}.pax::int, ${a}.nights::int,
   ${a}.nights_plan, ${a}.hotel_category, ${a}.package_type, to_jsonb(${a}.inclusions) as inclusions,
-  ${a}.budget::text, ${a}.budget_basis, ${a}.requirements, ${a}.quote_amount::text, ${a}.itinerary_url, ${a}.quote_shared_at::text,
+  ${a}.budget::text, ${a}.budget_basis, ${a}.requirements, ${a}.rooms, ${a}.meal_plan, ${a}.quote_amount::text, ${a}.itinerary_url, ${a}.quote_shared_at::text,
   ${a}.booking_ref, ${a}.confirmed_at::text, ${a}.next_follow_up::text, ${a}.follow_up_note, ${a}.lost_reason, ${a}.closed_at::text, ${a}.notes,
   ${a}.created_at::text, ${a}.updated_at::text, ${a}.created_by, ${a}.updated_by, ${a}.deleted_at::text,
   ${a}.paid::text, ${a}.advance_paid::text, ${a}.last_paid_on::text, ${a}.balance_due::text,
@@ -100,6 +100,7 @@ export interface LeadInput {
   adults: number; children: number; child_ages: string | null; infants: number;
   nights_plan: string | null; hotel_category: string | null; package_type: string | null; inclusions: string[];
   budget: string | null; budget_basis: 'total' | 'per_person'; requirements: string | null;
+  rooms: number | null; meal_plan: string | null;
   next_follow_up: string | null; follow_up_note: string | null; notes: string | null;
 }
 
@@ -142,6 +143,8 @@ export function parseLeadInput(get: Getter, getAll: (k: string) => string[] = ()
     package_type: pkg && pkg in PACKAGE_LABEL ? pkg : null, inclusions,
     budget, budget_basis: get('budget_basis') === 'per_person' ? 'per_person' : 'total',
     requirements: text(get('requirements'), 2000),
+    rooms: (get('rooms') ?? '').trim() ? (intIn(get('rooms'), 0, 'Rooms') || null) : null,
+    meal_plan: text(get('meal_plan'), 40),
     next_follow_up: dateOrNull(get('next_follow_up'), 'Follow-up date'), follow_up_note: text(get('follow_up_note'), 300),
     notes: text(get('notes'), 4000),
   };
@@ -156,12 +159,12 @@ export async function createLead(actor: string, i: LeadInput, idem?: string | nu
     const [r] = await tx<{ id: number; lead_no: string }>`
       insert into crm.lead (client_name, phone, email, city, lead_source, priority, destination, trip_type, travel_start, travel_end,
         flexible_dates, adults, children, child_ages, infants, nights_plan, hotel_category, package_type, inclusions,
-        budget, budget_basis, requirements, next_follow_up, follow_up_note, notes, idempotency_key, created_by, updated_by)
+        budget, budget_basis, requirements, rooms, meal_plan, next_follow_up, follow_up_note, notes, idempotency_key, created_by, updated_by)
       values (${i.client_name}::text, ${i.phone}::text, ${i.email}::text, ${i.city}::text, ${i.lead_source}::text, ${i.priority}::text,
         ${i.destination}::text, ${i.trip_type}::text, ${i.travel_start}::date, ${i.travel_end}::date, ${i.flexible_dates}::boolean,
         ${i.adults}::int, ${i.children}::int, ${i.child_ages}::text, ${i.infants}::int, ${i.nights_plan}::text, ${i.hotel_category}::text,
         ${i.package_type}::text, string_to_array(${i.inclusions.join('\u001f')}::text, chr(31)),
-        ${i.budget}::numeric, ${i.budget_basis}::text, ${i.requirements}::text, ${i.next_follow_up}::date, ${i.follow_up_note}::text,
+        ${i.budget}::numeric, ${i.budget_basis}::text, ${i.requirements}::text, ${i.rooms}::int, ${i.meal_plan}::text, ${i.next_follow_up}::date, ${i.follow_up_note}::text,
         ${i.notes}::text, ${idem ?? null}::text, ${actor}::text, ${actor}::text)
       returning id, lead_no`;
     await log(tx, r.id, 'stage', `Enquiry created – ${i.destination}`, actor, { to: 'new_query' });
@@ -179,6 +182,7 @@ export async function updateLead(actor: string, id: number, i: LeadInput): Promi
         nights_plan = ${i.nights_plan}::text, hotel_category = ${i.hotel_category}::text, package_type = ${i.package_type}::text,
         inclusions = string_to_array(${i.inclusions.join('\u001f')}::text, chr(31)),
         budget = ${i.budget}::numeric, budget_basis = ${i.budget_basis}::text, requirements = ${i.requirements}::text,
+        rooms = ${i.rooms}::int, meal_plan = ${i.meal_plan}::text,
         next_follow_up = ${i.next_follow_up}::date, follow_up_note = ${i.follow_up_note}::text, notes = ${i.notes}::text,
         updated_by = ${actor}::text
       where id = ${id}::int and deleted_at is null returning id`;

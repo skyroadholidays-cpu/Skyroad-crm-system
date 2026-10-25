@@ -19,6 +19,8 @@ export interface LeadForMessage {
   package_type: string | null;
   inclusions: string[] | null;
   requirements: string | null;
+  rooms?: number | null;
+  meal_plan?: string | null;
   quote_amount?: string | null;
   itinerary_url?: string | null;
   balance_due?: string | null;
@@ -63,14 +65,12 @@ export interface MailTemplate { subject: string; body: string }
 
 /** Starting point shown in Settings – the same mail the app sends without a saved template. */
 export const DEFAULT_SUPPLIER_TEMPLATE: MailTemplate = {
-  subject: 'Rate request – {{destination}} | {{dates}} | {{pax}} | {{ref}}',
+  subject: '{{destination}} Package - {{days}} Days - {{client_name}}',
   body: [
-    'Dear {{supplier_contact}},', '', 'Greetings from {{business}}!', '', 'Please share your best rates for the below enquiry:', '',
-    'Destination: {{destination}}', 'Travel dates: {{dates}}', 'Travellers: {{pax}}', 'Itinerary / nights: {{nights_plan}}',
-    'Hotel category: {{hotel_category}}', 'Package type: {{package}}', 'Inclusions required: {{inclusions}}', 'Special requests: {{requirements}}', '',
-    'Kindly include:', '• Hotel options with room category and meal plan', '• Per-person and total cost, with inclusions & exclusions',
-    '• Transfers and sightseeing details (SIC / private)', '• Quote validity and cancellation policy', '', 'Our reference: {{ref}}', '',
-    'Looking forward to your quick response.', '', 'Warm regards,', '{{signatory}}', '{{business}}', '{{email}}',
+    'Hi {{supplier_contact}},', '', 'Greetings from Skyroad Holidays.', '', 'Kindly give us the quote for the below query.', '',
+    'Travel dates: {{start_date}} to {{end_date}}', '', 'No of Pax: {{pax_short}}', '', 'No of Rooms: {{rooms}}', '',
+    'Meal Plan: {{meal_plan}}', '', 'Hotel Category: {{hotel_category}}', '', 'Destination:', '{{route}}', '',
+    '{{requirements}}', '', 'Kindly give us your best rates.', '', 'Regards,', '{{signatory}}', '{{business}}', '{{email}}',
   ].join('\n'),
 };
 
@@ -90,6 +90,13 @@ export const TEMPLATE_VARS: { key: string; help: string }[] = [
   { key: 'inclusions', help: 'Hotel, Airport transfers, …' },
   { key: 'requirements', help: 'Special requests' },
   { key: 'client_city', help: "Client's city" },
+  { key: 'client_name', help: 'Client name (e.g. for "Mr Sourabh")' },
+  { key: 'days', help: '07 (days, two digits)' },
+  { key: 'nights', help: '06 (nights, two digits)' },
+  { key: 'pax_short', help: '04 Adults + 02 kids (3,7 yrs)' },
+  { key: 'rooms', help: 'Number of rooms, e.g. 02' },
+  { key: 'meal_plan', help: 'MAP / CP / AP / EP' },
+  { key: 'route', help: 'Nights plan, or the destination if none' },
   { key: 'signatory', help: BUSINESS.signatory },
   { key: 'business', help: BUSINESS.name },
   { key: 'email', help: BUSINESS.email },
@@ -112,67 +119,51 @@ export function templateValues(l: LeadForMessage & { city?: string | null }, sup
     inclusions: (l.inclusions ?? []).join(', '),
     requirements: l.requirements ?? '',
     client_city: l.city ?? '',
+    client_name: l.client_name,
+    days: nightsOf(l) === null ? '' : two(nightsOf(l)! + 1),
+    nights: nightsOf(l) === null ? '' : two(nightsOf(l)!),
+    pax_short: paxShort(l),
+    rooms: l.rooms ? two(l.rooms) : '',
+    meal_plan: l.meal_plan ?? '',
+    route: l.nights_plan || l.destination,
     signatory: BUSINESS.signatory,
     business: BUSINESS.name,
     email: BUSINESS.email,
   };
 }
 
+const two = (n: number) => String(n).padStart(2, '0');
+function nightsOf(l: Pick<LeadForMessage, 'travel_start' | 'travel_end'>): number | null {
+  if (!l.travel_start || !l.travel_end) return null;
+  return Math.round((Date.parse(`${l.travel_end}T00:00:00Z`) - Date.parse(`${l.travel_start}T00:00:00Z`)) / 86400000);
+}
+/** "04 Adults + 02 kids (3,7 yrs) + 01 infant" */
+export function paxShort(l: Pick<LeadForMessage, 'adults' | 'children' | 'child_ages' | 'infants'>): string {
+  const parts = [`${two(l.adults)} Adult${l.adults === 1 ? '' : 's'}`];
+  if (l.children) parts.push(`${two(l.children)} kid${l.children === 1 ? '' : 's'}${l.child_ages ? ` (${l.child_ages.replace(/\s*(yrs?|years?)\s*$/i, '')} yrs)` : ''}`);
+  if (l.infants) parts.push(`${two(l.infants)} infant${l.infants === 1 ? '' : 's'}`);
+  return parts.join(' + ');
+}
+
 /** Fills {{name}} placeholders; lines whose only placeholder came out empty are dropped. */
 export function renderTemplate(tpl: string, vals: Record<string, string>): string {
-  return tpl.split('\n').flatMap((line) => {
+  const lines = tpl.replace(/\r/g, '').split('\n').flatMap((line) => {
     const keys = [...line.matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]);
     const out = line.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k) => (k in vals ? vals[k] : m));
-    return keys.length && keys.every((k) => k in vals && !vals[k]) && /:\s*$/.test(out.trim()) ? [] : [out];
-  }).join('\n');
+    const allEmpty = keys.length > 0 && keys.every((k) => k in vals && !vals[k]);
+    // drop "Label: {{x}}" or a bare "{{x}}" line when x is empty
+    return allEmpty && (out.trim() === '' || /:\s*$/.test(out.trim())) ? [] : [out];
+  });
+  // no more than one blank line in a row
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 export function supplierRequest(l: LeadForMessage & { city?: string | null }, supplierContact?: string | null, custom?: MailTemplate | null, supplierName?: string | null) {
-  if (custom?.body?.trim()) {
-    const vals = templateValues(l, { contact_person: supplierContact, name: supplierName });
-    let subject = renderTemplate(custom.subject?.trim() || 'Rate request – {{destination}} | {{dates}} | {{pax}} | {{ref}}', vals);
-    if (!subject.includes(l.lead_no)) subject += ` | ${l.lead_no}`; // keeps supplier replies traceable
-    return { subject, body: renderTemplate(custom.body, vals) };
-  }
-  const pkg = l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : 'Package as per itinerary';
-  const lines = [
-    `Dear ${supplierContact?.trim() || 'Team'},`,
-    '',
-    `Greetings from ${BUSINESS.name}!`,
-    '',
-    'Please share your best rates for the below enquiry:',
-    '',
-    `Destination: ${l.destination}`,
-    `Travel dates: ${datesText(l)}`,
-    `Travellers: ${paxText(l)}`,
-  ];
-  if (l.nights_plan) lines.push(`Itinerary / nights: ${l.nights_plan}`);
-  lines.push(`Hotel category: ${l.hotel_category || 'Please suggest 3★ / 4★ / 5★ options'}`);
-  lines.push(`Package type: ${pkg}`);
-  if (l.inclusions?.length) lines.push(`Inclusions required: ${l.inclusions.join(', ')}`);
-  if (l.requirements) lines.push(`Special requests: ${l.requirements}`);
-  lines.push(
-    '',
-    'Kindly include:',
-    '• Hotel options with room category and meal plan',
-    '• Per-person and total cost, with inclusions & exclusions',
-    '• Transfers and sightseeing details (SIC / private)',
-    '• Quote validity and cancellation policy',
-    '',
-    `Our reference: ${l.lead_no}`,
-    '',
-    'Looking forward to your quick response.',
-    '',
-    'Warm regards,',
-    BUSINESS.signatory,
-    BUSINESS.name,
-    BUSINESS.email,
-  );
-  const short = l.travel_start ? `${d(l.travel_start).replace(/ \d{4}$/, '')}${l.travel_end ? `–${d(l.travel_end)}` : ''}` : 'Dates TBC';
-  return {
-    subject: `Rate request – ${l.destination} | ${short} | ${paxText(l)} | ${l.lead_no}`,
-    body: lines.join('\n'),
-  };
+  const t = custom?.body?.trim() ? custom : DEFAULT_SUPPLIER_TEMPLATE;
+  const vals = templateValues(l, { contact_person: supplierContact, name: supplierName });
+  let subject = renderTemplate(t.subject?.trim() || DEFAULT_SUPPLIER_TEMPLATE.subject, vals).replace(/\s+-\s+(?=-|$)/g, ' ').trim();
+  if (!subject.includes(l.lead_no)) subject += ` | ${l.lead_no}`; // keeps supplier replies traceable
+  return { subject, body: renderTemplate(t.body, vals) };
 }
 
 /** WhatsApp to the client when you share the quote / itinerary. */

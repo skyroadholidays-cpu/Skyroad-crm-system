@@ -46,6 +46,7 @@ db/migrations/002_package_transfers.sql
 db/migrations/003_srq_numbers.sql
 db/migrations/004_gapless_numbers.sql
 db/migrations/005_connector_and_templates.sql
+db/migrations/006_rooms_meal_plan.sql
 db/tests/business_rules.sql
 lib/auth-core.ts
 lib/connector.ts

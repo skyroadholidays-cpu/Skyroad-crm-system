@@ -33,6 +33,8 @@ export interface ParsedEnquiry {
   requirements?: string;
   city?: string;
   flexible_dates?: boolean;
+  rooms?: number;
+  meal_plan?: string;
 }
 
 const MONTHS: Record<string, number> = {
@@ -136,7 +138,7 @@ export function parseEnquiry(input: string, today: string): ParsedEnquiry {
 export const ORDER = ['name', 'city', 'dates', 'destination', 'pax', 'package'] as const;
 export type Slot = (typeof ORDER)[number];
 export const SLOT_LABEL: Record<Slot, string> = { name: 'Name', city: 'City', dates: 'Dates', destination: 'Destination', pax: 'Travellers', package: 'Package' };
-export const ORDER_TEMPLATE = 'Rahul Shah 98765 43210\nMumbai\n1 Dec to 6 Dec\nThailand – 2N Krabi, 3N Phuket\n2 adults 1 child\nCustomised package';
+export const ORDER_TEMPLATE = 'Rahul Shah 98765 43210\nMumbai\n1 Dec to 6 Dec\nThailand – 2N Krabi, 3N Phuket\n2 adults 1 child\nCustomised package, 2 rooms, MAP';
 /** Placeholder for the quick-add box: the order, with an example for each line. */
 export const ORDER_PLACEHOLDER = [
   '1. Name + mobile   →  Rahul Shah 98765 43210',
@@ -144,7 +146,8 @@ export const ORDER_PLACEHOLDER = [
   '3. Dates           →  1 Dec to 6 Dec',
   '4. Destination     →  Thailand – 2N Krabi, 3N Phuket',
   '5. Travellers      →  2 adults 1 child',
-  '6. Package         →  Customised / Hotel / Transfers / Flights / Visa',
+  '6. Package         →  Customised package, 2 rooms, MAP',
+  '   (extra lines → special requests, e.g. Pickup & drop at Cochin airport)',
 ].join('\n');
 
 const HEADER_LINE = /^(new\s*(q|query|enquiry|inquiry|lead)|enquiry|inquiry|query|lead)\b[\s:.\-!]*$/i;
@@ -157,6 +160,22 @@ const LABELS: [Slot, RegExp][] = [
   ['package', /^(package|service|services|type|need|needs|requirement|booking)\s*[:\-–]\s*/i],
 ];
 const NO_DATES = /\b(tbc|tba|flexible|not decided|not fixed|any ?time|open)\b/i;
+
+/** "2 rooms", "MAP", "breakfast", "half board" … anywhere in the text. */
+export function parseRoomsMeal(text: string): { rooms?: number; meal_plan?: string } {
+  const out: { rooms?: number; meal_plan?: string } = {};
+  const r = text.match(/\b(\d{1,3})\s*(?:rooms?|rms?|dbl rooms?|double rooms?)\b/i) ?? text.match(/\brooms?\s*[:\-–]?\s*(\d{1,3})\b/i);
+  if (r) out.rooms = Number(r[1]);
+  if (/\bMAPAI\b/.test(text)) out.meal_plan = 'MAPAI';
+  else if (/\bAPAI\b/.test(text)) out.meal_plan = 'APAI';
+  else if (/\bMAP\b/i.test(text) || /half[\s-]?board|breakfast\s*(?:\+|and|&)\s*dinner/i.test(text)) out.meal_plan = 'MAP';
+  else if (/\bAI\b/.test(text) || /all[\s-]?inclusive/i.test(text)) out.meal_plan = 'AI';
+  else if (/\bAP\b/.test(text) || /full[\s-]?board|all meals/i.test(text)) out.meal_plan = 'AP';
+  else if (/\bCP\b/i.test(text) || /\bwith breakfast|breakfast only|\bbb\b/i.test(text)) out.meal_plan = 'CP';
+  else if (/\bEP\b/i.test(text) || /room only/i.test(text)) out.meal_plan = 'EP';
+  return out;
+}
+const ROOMS_MEAL_ONLY = /^(?:\s*(?:\d{1,3}\s*(?:rooms?|rms?)|rooms?\s*[:\-–]?\s*\d{1,3}|meal\s*plan\s*[:\-–]?|map|cp|ep|ap|ai|apai|mapai|half board|full board|all inclusive|breakfast(?:\s*(?:\+|and|&)\s*dinner)?)\s*[,;/+&-]?)+\s*$/i;
 
 function isDateLine(line: string, today: string) {
   return !!parseDates(line, today).start || NO_DATES.test(line);
@@ -243,7 +262,7 @@ function parseOrdered(input: string, today: string): ParsedEnquiry | null {
   // 4 destination (+ nights plan)
   if (slot.destination) {
     const t = slot.destination;
-    const legRe = /(\d{1,2})\s*(?:n|nts?|nights?)\b\s*(?:in\s+|at\s+)?([A-Za-z][A-Za-z .'()-]*?)(?=\s*(?:,|\+|&|\/|\band\b|$|\d{1,2}\s*(?:n|nts?|nights?)\b))/gi;
+    const legRe = /(\d{1,2})\s*(?:n|nts?|nights?)\b\s*(?:in\s+|at\s+)?([A-Za-z][A-Za-z .'()/-]*?)(?=\s*(?:,|\+|&|\/(?=\s*\d)|\band\b|$|\d{1,2}\s*(?:n|nts?|nights?)\b))/gi;
     const legs = [...t.matchAll(legRe)].map((m) => ({ n: Number(m[1]), place: m[2].trim().replace(/\b\w/g, (c) => c.toUpperCase()), at: m.index ?? 0 }))
       .filter((x) => x.place && !/^(stay|d|days?)$/i.test(x.place));
     if (legs.length) out.nights_plan = legs.map((x) => `${x.n}N ${x.place}`).join(', ');
@@ -270,7 +289,9 @@ function parseOrdered(input: string, today: string): ParsedEnquiry | null {
   if (free2.hotel_category) out.hotel_category = free2.hotel_category;
   if (free2.budget) { out.budget = free2.budget; out.budget_basis = free2.budget_basis; }
   if (free2.lead_source) out.lead_source = free2.lead_source;
-  if (extra.length) out.requirements = extra.join('\n').slice(0, 2000);
+  Object.assign(out, parseRoomsMeal(all));
+  const req = extra.filter((x) => !ROOMS_MEAL_ONLY.test(x));
+  if (req.length) out.requirements = req.join('\n').slice(0, 2000);
   return out;
 }
 
@@ -303,7 +324,7 @@ function parseFree(input: string, today: string): ParsedEnquiry {
 
   // nights split: "2N Krabi, 3N Phuket"  /  "2 nights Krabi + 3 nights Phuket"
   const legs: { n: number; place: string }[] = [];
-  const legRe = /(\d{1,2})\s*(?:n|nts?|nights?)\b\s*(?:in\s+|at\s+)?([A-Za-z][A-Za-z .'()-]*?)(?=\s*(?:,|\+|&|\/|\band\b|\n|$|\d{1,2}\s*(?:n|nts?|nights?)\b))/gi;
+  const legRe = /(\d{1,2})\s*(?:n|nts?|nights?)\b\s*(?:in\s+|at\s+)?([A-Za-z][A-Za-z .'()/-]*?)(?=\s*(?:,|\+|&|\/(?=\s*\d)|\band\b|\n|$|\d{1,2}\s*(?:n|nts?|nights?)\b))/gi;
   for (const m of text.matchAll(legRe)) {
     const place = m[2].trim().replace(/\s+/g, ' ');
     if (!place || /^(stay|d|days?)$/i.test(place)) continue;
@@ -329,8 +350,8 @@ function parseFree(input: string, today: string): ParsedEnquiry {
   }
 
   // hotel category
-  const star = text.match(/\b([2-5])\s*(?:\*|star|⭐|str)/i);
-  if (star) out.hotel_category = `${star[1]} Star`;
+  const stars = text.match(/\b[2-7]\s*(?:\*|star|⭐|str)(?:\s*(?:deluxe|dlx|premium|superior))?(?:\s*(?:,|\/|&|and|or)\s*[2-7]\s*(?:\*|star|⭐|str)(?:\s*(?:deluxe|dlx|premium|superior))?)*/i);
+  if (stars) out.hotel_category = stars[0].replace(/\s*(?:\*|⭐|str|star)/gi, ' star').replace(/\s+/g, ' ').replace(/^(\d) star$/i, '$1 Star').trim();
   else if (/\bluxury|boutique|premium\b/i.test(text)) out.hotel_category = 'Luxury / boutique';
   else if (/\bbudget hotel|economy\b/i.test(text)) out.hotel_category = 'Budget';
 
@@ -360,6 +381,8 @@ function parseFree(input: string, today: string): ParsedEnquiry {
   if (/\btransfers?\b/i.test(text)) inc.add('Airport transfers');
   if (/\bforex\b/i.test(text)) inc.add('Forex');
   if (inc.size) out.inclusions = [...inc];
+
+  Object.assign(out, parseRoomsMeal(text));
 
   // lead source
   const src = text.match(/\b(?:source|via|from)\s*[:\-]?\s*(whatsapp|instagram|insta|facebook|fb|website|google|referral|reference|repeat)/i);

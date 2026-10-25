@@ -102,6 +102,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               <dt>Package</dt><dd>{l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : '—'}</dd>
               <dt>Inclusions</dt><dd>{l.inclusions.length ? <span className="tags">{l.inclusions.map((x) => <span key={x} className="tag">{x}</span>)}</span> : '—'}</dd>
               <dt>Hotel</dt><dd>{l.hotel_category || '—'}</dd>
+              <dt>Rooms · meals</dt><dd>{l.rooms ? `${l.rooms} room${l.rooms === 1 ? '' : 's'}` : '—'}{l.meal_plan ? ` · ${l.meal_plan}` : ''}</dd>
               <dt>Budget</dt><dd>{l.budget ? <>{inr(l.budget)} {l.budget_basis === 'per_person' ? 'per person' : 'total'}</> : '—'}</dd>
               <dt>Special requests</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{l.requirements || '—'}</dd>
               {l.notes && <><dt>Notes</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{l.notes}</dd></>}

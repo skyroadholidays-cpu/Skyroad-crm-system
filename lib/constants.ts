@@ -96,3 +96,12 @@ export const ACTIVITY_LABEL: Record<string, string> = {
 };
 /** Interactions you can log by hand from the lead page. */
 export const LOGGABLE = ['call', 'whatsapp', 'email', 'meeting', 'note'] as const;
+
+/** Meal plans as hotels write them. */
+export const MEAL_PLANS = [
+  { key: 'EP', label: 'EP – room only' },
+  { key: 'CP', label: 'CP – breakfast' },
+  { key: 'MAP', label: 'MAP – breakfast + dinner' },
+  { key: 'AP', label: 'AP – all meals' },
+  { key: 'AI', label: 'AI – all inclusive' },
+];

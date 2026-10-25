@@ -100,9 +100,14 @@ async function main() {
   await test('standard supplier mail and WhatsApp links are filled from the enquiry', () => {
     const l = { lead_no: 'SRQ-00001', client_name: 'Asha Rao', destination: 'Thailand', travel_start: '2026-12-01', travel_end: '2026-12-06', adults: 2, children: 1, child_ages: '6',
       infants: 0, nights_plan: '2N Krabi, 3N Phuket', hotel_category: '4 Star', package_type: 'land_package', inclusions: ['Hotel', 'Full sightseeing'], requirements: null, quote_amount: '145000.00' };
-    const m = T.supplierRequest(l, 'Somchai');
-    assert.ok(m.subject.includes('Thailand') && m.subject.includes('SRQ-00001') && m.subject.includes('2 Adults, 1 Child'));
-    for (const s of ['Dear Somchai,', '1 Dec 2026 – 6 Dec 2026 (5N / 6D)', '2N Krabi, 3N Phuket', '4 Star', 'Customised package', 'sales@skyroadholidays.com']) assert.ok(m.body.includes(s), s);
+    const m = T.supplierRequest({ ...l, rooms: 2, meal_plan: 'MAP', requirements: 'Pickup and drop at Krabi airport' }, 'Somchai');
+    assert.equal(m.subject, 'Thailand Package - 06 Days - Asha Rao | SRQ-00001');
+    for (const s of ['Hi Somchai,', 'Travel dates: 1 Dec 2026 to 6 Dec 2026', 'No of Pax: 02 Adults + 01 kid (6 yrs)', 'No of Rooms: 02', 'Meal Plan: MAP',
+      'Hotel Category: 4 Star', 'Destination:\n2N Krabi, 3N Phuket', 'Pickup and drop at Krabi airport', 'Kindly give us your best rates.', 'sales@skyroadholidays.com']) assert.ok(m.body.includes(s), s);
+    const thin = T.supplierRequest({ ...l, nights_plan: null, hotel_category: null }, null);
+    assert.ok(!thin.body.includes('No of Rooms') && !thin.body.includes('Meal Plan') && thin.body.includes('Destination:\nThailand'), 'empty lines are left out');
+    const k2 = parseEnquiry('Mr Sourabh 98250 12345\nAhmedabad\n12 Nov 2026 to 18 Nov 2026\nKerala – 2N Munnar, 1N Thekkady, 3N TRV/Kovalam\n4 adults 2 kids (3,7)\nCustomised package, 2 rooms, MAP, 3 star deluxe\nPickup and drop off at Cochin airport', '2026-10-25');
+    assert.deepEqual([k2.nights_plan, k2.rooms, k2.meal_plan, k2.hotel_category, k2.requirements], ['2N Munnar, 1N Thekkady, 3N TRV/Kovalam', 2, 'MAP', '3 star deluxe', 'Pickup and drop off at Cochin airport']);
     assert.ok(T.clientQuote(l).includes('₹1,45,000'));
     assert.equal(T.digitsForWhatsApp('98765 43210'), '919876543210');
     assert.equal(T.digitsForWhatsApp('+66 81 234 5678'), '66812345678');

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ActionForm, SubmitButton } from './ActionForm';
 import type { FormState } from '@/app/actions';
 import { parseEnquiry, durationLabel, slotsFound, ORDER, SLOT_LABEL, ORDER_TEMPLATE, ORDER_PLACEHOLDER, type ParsedEnquiry, type Slot } from '@/lib/quick-parse';
-import { LEAD_SOURCES, HOTEL_CATEGORIES, PACKAGE_TYPES, INCLUSIONS, PRIORITIES, inclusionsForPackage } from '@/lib/constants';
+import { LEAD_SOURCES, HOTEL_CATEGORIES, PACKAGE_TYPES, INCLUSIONS, PRIORITIES, MEAL_PLANS, inclusionsForPackage } from '@/lib/constants';
 
 export interface LeadFormValues {
   id?: number;
@@ -11,7 +11,7 @@ export interface LeadFormValues {
   priority?: string; destination?: string; trip_type?: string | null; travel_start?: string | null; travel_end?: string | null;
   flexible_dates?: boolean; adults?: number; children?: number; child_ages?: string | null; infants?: number;
   nights_plan?: string | null; hotel_category?: string | null; package_type?: string | null; inclusions?: string[];
-  budget?: string | null; budget_basis?: string; requirements?: string | null; next_follow_up?: string | null;
+  budget?: string | null; budget_basis?: string; requirements?: string | null; rooms?: number | null; meal_plan?: string | null; next_follow_up?: string | null;
   follow_up_note?: string | null; notes?: string | null;
 }
 
@@ -27,7 +27,7 @@ export function LeadForm({ action, mode, values, today, idem }: {
     flexible_dates: !!values.flexible_dates, adults: values.adults ?? 2, children: values.children ?? 0, child_ages: values.child_ages ?? '',
     infants: values.infants ?? 0, nights_plan: values.nights_plan ?? '', hotel_category: values.hotel_category ?? '',
     package_type: values.package_type ?? '', inclusions: values.inclusions ?? [], budget: values.budget ?? '',
-    budget_basis: values.budget_basis ?? 'total', requirements: values.requirements ?? '', next_follow_up: values.next_follow_up ?? '',
+    budget_basis: values.budget_basis ?? 'total', requirements: values.requirements ?? '', rooms: values.rooms ?? '', meal_plan: values.meal_plan ?? '', next_follow_up: values.next_follow_up ?? '',
     follow_up_note: values.follow_up_note ?? '', notes: values.notes ?? '',
   });
   const [paste, setPaste] = useState('');
@@ -77,7 +77,7 @@ export function LeadForm({ action, mode, values, today, idem }: {
             {!paste && <button type="button" className="btn btn-link small" onClick={() => setPaste(ORDER_TEMPLATE)}>Start from an example</button>}
             {filled && <span className={`small ${found && ORDER.some((k) => !found[k]) ? 'warn-text' : 'ok-text'}`}>{filled}</span>}
           </div>
-          <p className="muted small" style={{ margin: 0 }}>Name can include the phone · Dates like “1 Dec to 6 Dec” or “flexible” · Destination can include nights (“Thailand – 2N Krabi, 3N Phuket”) · Travellers like “2 adults 1 child” or “2+1” · Package: customised, hotel, transfers, flights or visa. One line also works with “ | ” between items.</p>
+          <p className="muted small" style={{ margin: 0 }}>Name can include the phone · Dates like “1 Dec to 6 Dec” or “flexible” · Destination can include nights (“Thailand – 2N Krabi, 3N Phuket”) · Travellers like “2 adults 1 child” or “2+1” · Package: customised, hotel, transfers, flights or visa – add rooms & meal plan on the same line (“Customised, 2 rooms, MAP”). Extra lines (e.g. “Pickup & drop at Cochin airport”) go to Special requests. One line also works with “ | ” between items.</p>
         </section>
       )}
 
@@ -160,6 +160,14 @@ export function LeadForm({ action, mode, values, today, idem }: {
         </div>
       </div>
       <div className="grid">
+        <label className="field"><span className="field-label">Rooms</span>
+          <input type="number" name="rooms" min={1} max={500} value={v.rooms} onChange={set('rooms')} placeholder="e.g. 2" /></label>
+        <label className="field"><span className="field-label">Meal plan</span>
+          <select name="meal_plan" value={v.meal_plan} onChange={set('meal_plan')}>
+            <option value="">— Choose —</option>
+            {MEAL_PLANS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            {v.meal_plan && !MEAL_PLANS.some((m) => m.key === v.meal_plan) && <option value={v.meal_plan}>{v.meal_plan}</option>}
+          </select></label>
         <label className="field"><span className="field-label">Hotel category</span>
           <select name="hotel_category" value={v.hotel_category} onChange={set('hotel_category')}>
             <option value="">— Choose —</option>
