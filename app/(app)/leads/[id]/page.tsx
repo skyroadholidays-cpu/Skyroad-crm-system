@@ -3,13 +3,14 @@ import { notFound } from 'next/navigation';
 import { randomUUID } from 'node:crypto';
 import { requireUser } from '@/lib/session';
 import * as C from '@/lib/crm';
+import { inSeries } from '@/lib/db-core';
 import { fmtDate, fmtDateTime, todayIST, addDays } from '@/lib/dates';
 import { inr } from '@/lib/money';
 import { durationLabel } from '@/lib/quick-parse';
 import * as T from '@/lib/templates';
 import {
-  ALL_STATUSES, STAGE_LABEL, PACKAGE_TYPES, PAYMENT_KINDS, PAYMENT_MODES, QUOTE_STATUS, CHANNELS, ACTIVITY_LABEL, LOGGABLE,
-  stageRank, type PackageType,
+  ALL_STATUSES, STAGE_LABEL, PACKAGE_LABEL, PAYMENT_KINDS, PAYMENT_MODES, QUOTE_STATUS, CHANNELS, ACTIVITY_LABEL, LOGGABLE,
+  stageRank,
 } from '@/lib/constants';
 import { Card, Empty, Flash, Money, PageHeader, StageBadge, Stepper } from '@/components/ui';
 import { ActionForm, SubmitButton } from '@/components/ActionForm';
@@ -42,11 +43,12 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   await requireUser();
   const { id } = await params;
   const sp = await searchParams;
+  if (!/^\d{1,9}$/.test(id)) notFound();
   const l = await C.getLead(Number(id));
   if (!l) notFound();
-  const [quotes, payments, activity, suppliers] = await Promise.all([
-    C.listQuotes(l.id), C.listPayments(l.id), C.listActivity(l.id), C.listSuppliers(false),
-  ]);
+  const [quotes, payments, activity, suppliers] = await inSeries(
+    () => C.listQuotes(l.id), () => C.listPayments(l.id), () => C.listActivity(l.id), () => C.listSuppliers(false),
+  );
   const today = todayIST();
   const deleted = !!l.deleted_at;
   const step = nextStep(l);
@@ -95,7 +97,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               <dt>Dates</dt><dd>{l.travel_start ? <>{fmtDate(l.travel_start)}{l.travel_end ? ` – ${fmtDate(l.travel_end)}` : ''} <span className="muted">{durationLabel(l.travel_start, l.travel_end)}</span></> : 'To be confirmed'}{l.flexible_dates ? <span className="pill" style={{ marginLeft: 6 }}>Flexible</span> : null}</dd>
               <dt>Travellers</dt><dd>{T.paxText(l)}</dd>
               <dt>Nights plan</dt><dd>{l.nights_plan || '—'}</dd>
-              <dt>Package</dt><dd>{l.package_type ? PACKAGE_TYPES[l.package_type as PackageType] : '—'}</dd>
+              <dt>Package</dt><dd>{l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : '—'}</dd>
               <dt>Inclusions</dt><dd>{l.inclusions.length ? <span className="tags">{l.inclusions.map((x) => <span key={x} className="tag">{x}</span>)}</span> : '—'}</dd>
               <dt>Hotel</dt><dd>{l.hotel_category || '—'}</dd>
               <dt>Budget</dt><dd>{l.budget ? <>{inr(l.budget)} {l.budget_basis === 'per_person' ? 'per person' : 'total'}</> : '—'}</dd>

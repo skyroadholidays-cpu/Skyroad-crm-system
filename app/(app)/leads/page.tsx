@@ -33,7 +33,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       <Card>
         <form className="filters" method="get">
           <label className="field grow"><span className="field-label">Search</span>
-            <input name="q" defaultValue={sp.q ?? ''} placeholder="Name, phone, destination, SKQ no, supplier…" /></label>
+            <input name="q" defaultValue={sp.q ?? ''} placeholder="Name, phone, destination, SRQ no, supplier…" /></label>
           <label className="field"><span className="field-label">Stage</span>
             <AutoSubmitSelect name="stage" defaultValue={sp.stage ?? ''}>
               <option value="">Any</option>

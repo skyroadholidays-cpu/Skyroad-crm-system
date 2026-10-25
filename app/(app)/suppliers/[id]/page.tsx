@@ -16,6 +16,7 @@ export default async function SupplierPage({ params, searchParams }: { params: P
   await requireUser();
   const { id } = await params;
   const sp = await searchParams;
+  if (!/^\d{1,9}$/.test(id)) notFound();
   const s = await C.getSupplier(Number(id));
   if (!s) notFound();
   const quotes = await C.listQuotesForSupplier(s.id);

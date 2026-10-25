@@ -13,7 +13,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   return (
     <div className="stack">
       <PageHeader title="Search" subtitle={q ? `Results for “${q}”` : 'Type in the search box at the top.'} />
-      <form method="get" className="row"><input name="q" defaultValue={q} placeholder="Client, phone, destination, SKQ no, supplier…" style={{ maxWidth: 420 }} /><button className="btn btn-primary">Search</button></form>
+      <form method="get" className="row"><input name="q" defaultValue={q} placeholder="Client, phone, destination, SRQ no, supplier…" style={{ maxWidth: 420 }} /><button className="btn btn-primary">Search</button></form>
       {q && (
         <>
           <Card title={`Enquiries (${r.leads.length})`}><LeadList leads={r.leads} empty="No enquiries found" /></Card>

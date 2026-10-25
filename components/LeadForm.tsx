@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ActionForm, SubmitButton } from './ActionForm';
 import type { FormState } from '@/app/actions';
 import { parseEnquiry, durationLabel, type ParsedEnquiry } from '@/lib/quick-parse';
-import { LEAD_SOURCES, HOTEL_CATEGORIES, PACKAGE_TYPES, INCLUSIONS, PRIORITIES } from '@/lib/constants';
+import { LEAD_SOURCES, HOTEL_CATEGORIES, PACKAGE_TYPES, INCLUSIONS, PRIORITIES, inclusionsForPackage } from '@/lib/constants';
 
 export interface LeadFormValues {
   id?: number;
@@ -139,7 +139,7 @@ export function LeadForm({ action, mode, values, today, idem }: {
         {Object.entries(PACKAGE_TYPES).map(([k, label]) => (
           <label key={k} className={`type-opt${v.package_type === k ? ' on' : ''}`}>
             <input type="radio" name="package_type" value={k} checked={v.package_type === k}
-                   onChange={() => setV((p) => ({ ...p, package_type: k, inclusions: k === 'land_package' ? [...new Set([...p.inclusions, 'Hotel', 'Airport transfers', 'Full sightseeing'])] : p.inclusions }))} />
+                   onChange={() => setV((p) => ({ ...p, package_type: k, inclusions: inclusionsForPackage(p.inclusions, p.package_type, k) }))} />
             {label}
           </label>
         ))}
@@ -164,7 +164,7 @@ export function LeadForm({ action, mode, values, today, idem }: {
         <div className="field">
           <span className="field-label">Client budget (₹)</span>
           <div className="row nowrap">
-            <input name="budget" value={v.budget} onChange={set('budget')} inputMode="decimal" placeholder="1,50,000" style={{ flex: 1 }} />
+            <input name="budget" value={v.budget} onChange={set('budget')} inputMode="decimal" placeholder="5,00,000" style={{ flex: 1 }} />
             <select name="budget_basis" value={v.budget_basis} onChange={set('budget_basis')} style={{ width: 'auto' }}>
               <option value="total">total</option><option value="per_person">per person</option>
             </select>

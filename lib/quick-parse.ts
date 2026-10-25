@@ -9,6 +9,7 @@
 // Pure function (no server code) so the form can use it in the browser and
 // tests can check it directly. It only fills what it recognises; anything it
 // is unsure about is left for you.
+import { PACKAGE_INCLUSIONS } from './constants';
 
 export interface ParsedEnquiry {
   client_name?: string;
@@ -24,7 +25,7 @@ export interface ParsedEnquiry {
   infants?: number;
   nights_plan?: string;
   hotel_category?: string;
-  package_type?: 'land_package' | 'hotel_only' | 'custom' | 'flights_only' | 'visa_only';
+  package_type?: 'land_package' | 'hotel_only' | 'transfers' | 'flights_only' | 'visa_only';
   inclusions?: string[];
   budget?: string;
   budget_basis?: 'total' | 'per_person';
@@ -188,10 +189,11 @@ export function parseEnquiry(input: string, today: string): ParsedEnquiry {
   const inc = new Set<string>();
   if (/land\s*package|land\s*only|tour\s*package|full\s*sightseeing|with\s*sightseeing/i.test(text)) out.package_type = 'land_package';
   else if (/hotel\s*only|only\s*hotel|stay\s*only/i.test(text)) out.package_type = 'hotel_only';
+  else if (/transfers?\s*only|only\s*transfers?/i.test(text)) out.package_type = 'transfers';
   else if (/flights?\s*only|only\s*(?:air\s*)?tickets?/i.test(text)) out.package_type = 'flights_only';
   else if (/visa\s*only|only\s*visa/i.test(text)) out.package_type = 'visa_only';
   if (/\b(with|incl\.?|including|\+)\s*(?:air|flights?|airfare|tickets?)|flights?\s*(?:included|needed|required|also)\b/i.test(text)) inc.add('Flights');
-  if (out.package_type === 'land_package') { inc.add('Hotel'); inc.add('Airport transfers'); inc.add('Full sightseeing'); }
+  for (const x of (out.package_type && PACKAGE_INCLUSIONS[out.package_type]) || []) inc.add(x);
   if (/\bvisa\b/i.test(text) && out.package_type !== 'visa_only') inc.add('Visa');
   if (/insurance/i.test(text)) inc.add('Travel insurance');
   if (/\bcruise\b/i.test(text)) inc.add('Cruise');

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 import { listSessions } from '@/lib/auth-core';
 import * as C from '@/lib/crm';
-import { db } from '@/lib/db-core';
+import { db, inSeries } from '@/lib/db-core';
 import { fmtDateTime } from '@/lib/dates';
 import { STAGES, STAGE_LABEL, STAGE_HELP } from '@/lib/constants';
 import { Card, PageHeader } from '@/components/ui';
@@ -23,15 +23,15 @@ const ACTION: Record<string, string> = { insert: 'Created', update: 'Edited', de
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [sessions, deleted, audit] = await Promise.all([
-    listSessions(user),
-    C.listDeletedLeads(50),
-    db()<{ at: string; actor: string | null; table_name: string; action: string; record_id: string; label: string | null; lead_id: string | null }>`
+  const [sessions, deleted, audit] = await inSeries(
+    () => listSessions(user),
+    () => C.listDeletedLeads(50),
+    () => db()<{ at: string; actor: string | null; table_name: string; action: string; record_id: string; label: string | null; lead_id: string | null }>`
       select a.at::text, a.actor, a.table_name, a.action, a.record_id,
              coalesce(a.new_data->>'lead_no', a.old_data->>'lead_no', a.new_data->>'name', a.old_data->>'name', a.new_data->>'amount', a.old_data->>'amount') as label,
              case when a.table_name = 'lead' then a.record_id else coalesce(a.new_data->>'lead_id', a.old_data->>'lead_id') end as lead_id
       from crm.audit_log a order by a.at desc, a.id desc limit 40`,
-  ]);
+  );
   return (
     <div className="stack">
       <PageHeader title="Settings" subtitle={`Signed in as ${user.username}`} />

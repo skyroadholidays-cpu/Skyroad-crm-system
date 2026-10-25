@@ -31,7 +31,7 @@ insert into supplier (id, name, email) values (9001, 'Rule Test DMC', 'r@t.examp
 insert into lead (id, client_name, destination, travel_start, travel_end, status, quote_amount)
 values (9001, 'Rule Test', 'Thailand', today_ist() + 30, today_ist() + 35, 'new_query', 100000);
 
-select pg_temp.eqt('lead number assigned', (select lead_no ~ '^SKQ-\d{5}$' from lead where id = 9001)::text, 'true');
+select pg_temp.eqt('lead number assigned', (select lead_no ~ '^SRQ-\d{5}$' from lead where id = 9001)::text, 'true');
 select pg_temp.eqt('stage starts as new query', (select stage from v_lead where id = 9001), 'new_query');
 select pg_temp.fails('end before start rejected', $q$insert into lead (client_name, destination, travel_start, travel_end) values ('a','b','2026-12-06','2026-12-01')$q$, 'lead_dates');
 select pg_temp.fails('zero travellers rejected', $q$insert into lead (client_name, destination, adults) values ('a','b',0)$q$, 'lead_pax');

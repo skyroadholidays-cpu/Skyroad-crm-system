@@ -54,14 +54,32 @@ export const LEAD_SOURCES = ['WhatsApp', 'Instagram', 'Facebook', 'Website', 'Go
 export const HOTEL_CATEGORIES = ['3 Star', '4 Star', '5 Star', 'Luxury / boutique', 'Budget', 'Mixed'];
 export const PRIORITIES = [{ key: 'hot', label: 'Hot' }, { key: 'normal', label: 'Normal' }, { key: 'cold', label: 'Cold' }] as const;
 
+/** Package choices shown on the enquiry form, in this order. */
 export const PACKAGE_TYPES = {
-  land_package: 'Tour / Land package (hotel + transfers + full sightseeing)',
+  land_package: 'Customised package',
   hotel_only: 'Hotel only',
-  custom: 'Customised package',
+  transfers: 'Transfers',
   flights_only: 'Flights only',
   visa_only: 'Visa only',
 } as const;
 export type PackageType = keyof typeof PACKAGE_TYPES;
+/** Labels for every package value ever saved (includes older ones no longer offered). */
+export const PACKAGE_LABEL: Record<string, string> = { ...PACKAGE_TYPES, custom: 'Customised package' };
+/** Inclusions ticked automatically when a package type is chosen. */
+export const PACKAGE_INCLUSIONS: Record<string, string[]> = {
+  land_package: ['Hotel', 'Airport transfers', 'Full sightseeing'],
+  hotel_only: ['Hotel'],
+  transfers: ['Inter-city transport'],
+  flights_only: ['Flights'],
+  visa_only: ['Visa'],
+};
+/** Swaps the automatic inclusions of the old package for the new one's; anything ticked by hand stays. */
+export function inclusionsForPackage(current: string[], from: string | null | undefined, to: string): string[] {
+  const next = PACKAGE_INCLUSIONS[to] ?? [];
+  const old = (from && PACKAGE_INCLUSIONS[from]) || [];
+  const kept = current.filter((x) => !old.includes(x) || next.includes(x));
+  return [...kept, ...next.filter((x) => !kept.includes(x))];
+}
 
 export const INCLUSIONS = ['Flights', 'Hotel', 'Airport transfers', 'Full sightseeing', 'Meals', 'Visa', 'Travel insurance', 'Forex', 'Cruise', 'Guide', 'Inter-city transport', 'Activities / tickets'];
 

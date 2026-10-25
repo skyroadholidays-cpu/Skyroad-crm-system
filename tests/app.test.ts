@@ -50,7 +50,7 @@ async function main() {
   } else {
     const url = process.env.TEST_DATABASE_URL;
     if (!url) throw new Error('Set TEST_DATABASE_URL to an EMPTY, freshly migrated test database (never your live one).');
-    const postgres = (await import('postgres')).default;
+    const postgres = (await import(process.env.PG_DRIVER ?? 'postgres')).default;
     const pg = postgres(url, { prepare: false, max: 4, onnotice: () => {} });
     sql = pg as unknown as Sql;
     end = () => void pg.end();
@@ -85,17 +85,31 @@ async function main() {
     assert.deepEqual(parseEnquiry('', today), {});
   });
   await test('standard supplier mail and WhatsApp links are filled from the enquiry', () => {
-    const l = { lead_no: 'SKQ-00101', client_name: 'Asha Rao', destination: 'Thailand', travel_start: '2026-12-01', travel_end: '2026-12-06', adults: 2, children: 1, child_ages: '6',
+    const l = { lead_no: 'SRQ-00001', client_name: 'Asha Rao', destination: 'Thailand', travel_start: '2026-12-01', travel_end: '2026-12-06', adults: 2, children: 1, child_ages: '6',
       infants: 0, nights_plan: '2N Krabi, 3N Phuket', hotel_category: '4 Star', package_type: 'land_package', inclusions: ['Hotel', 'Full sightseeing'], requirements: null, quote_amount: '145000.00' };
     const m = T.supplierRequest(l, 'Somchai');
-    assert.ok(m.subject.includes('Thailand') && m.subject.includes('SKQ-00101') && m.subject.includes('2 Adults, 1 Child'));
-    for (const s of ['Dear Somchai,', '1 Dec 2026 – 6 Dec 2026 (5N / 6D)', '2N Krabi, 3N Phuket', '4 Star', 'Tour / Land package', 'sales@skyroadholidays.com']) assert.ok(m.body.includes(s), s);
+    assert.ok(m.subject.includes('Thailand') && m.subject.includes('SRQ-00001') && m.subject.includes('2 Adults, 1 Child'));
+    for (const s of ['Dear Somchai,', '1 Dec 2026 – 6 Dec 2026 (5N / 6D)', '2N Krabi, 3N Phuket', '4 Star', 'Customised package', 'sales@skyroadholidays.com']) assert.ok(m.body.includes(s), s);
     assert.ok(T.clientQuote(l).includes('₹1,45,000'));
     assert.equal(T.digitsForWhatsApp('98765 43210'), '919876543210');
     assert.equal(T.digitsForWhatsApp('+66 81 234 5678'), '66812345678');
     assert.equal(T.digitsForWhatsApp('123'), null);
     assert.ok(T.whatsappLink('9876543210', 'Hi there').startsWith('https://wa.me/919876543210?text=Hi%20there'));
     assert.ok(T.gmailLink('a@b.com', 'S', 'B').includes('to=a%40b.com&su=S&body=B'));
+  });
+
+  await test('choosing a package ticks its inclusions and swaps them on change', async () => {
+    const { inclusionsForPackage } = await import('../lib/constants');
+    let inc = inclusionsForPackage(['Meals'], null, 'land_package');
+    assert.deepEqual(inc, ['Meals', 'Hotel', 'Airport transfers', 'Full sightseeing']);
+    inc = inclusionsForPackage(inc, 'land_package', 'hotel_only');
+    assert.deepEqual(inc, ['Meals', 'Hotel'], 'hand-ticked Meals stays; the land-package extras go');
+    assert.deepEqual(inclusionsForPackage(inc, 'hotel_only', 'transfers'), ['Meals', 'Inter-city transport']);
+    assert.deepEqual(inclusionsForPackage([], null, 'flights_only'), ['Flights']);
+    assert.deepEqual(inclusionsForPackage([], null, 'visa_only'), ['Visa']);
+    assert.deepEqual(parseEnquiry('Goa transfers only 2 adults', '2026-10-25').inclusions, ['Inter-city transport', 'Airport transfers']);
+    const r = await C.createLead(ACTOR, C.parseLeadInput(g({ client_name: 'Transfer Only', destination: 'Goa', package_type: 'transfers' })));
+    assert.equal((await C.getLead(r.id))!.package_type, 'transfers');
   });
 
   // ───────── auth
@@ -136,7 +150,7 @@ async function main() {
     assert.ok(again.duplicate);
     lead = r.id;
     const l = (await C.getLead(lead))!;
-    assert.match(l.lead_no, /^SKQ-\d{5}$/);
+    assert.match(l.lead_no, /^SRQ-\d{5}$/);
     assert.equal(l.stage, 'new_query');
     assert.deepEqual(l.inclusions, ['Hotel', 'Airport transfers', 'Full sightseeing']);
     assert.equal(l.pax, 3);

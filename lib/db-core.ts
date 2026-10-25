@@ -19,6 +19,17 @@ export async function withTx<T>(actor: string, fn: (tx: Sql) => Promise<T>): Pro
   });
 }
 
+/**
+ * Runs database steps one after another. Supabase's connection pooler can
+ * stall when one request sends many queries at the same moment, so pages
+ * never fire them in parallel.
+ */
+export async function inSeries<T extends (() => Promise<unknown>)[]>(...steps: T): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
+  const out: unknown[] = [];
+  for (const step of steps) out.push(await step());
+  return out as { [K in keyof T]: Awaited<ReturnType<T[K]>> };
+}
+
 /** A user-facing error: its message is safe to show on screen. */
 export class UserError extends Error {
   constructor(message: string) {
@@ -43,6 +54,8 @@ const CONSTRAINT_MESSAGES: Record<string, string> = {
   supplier_quote_received: 'Enter the quoted amount.',
   supplier_quote_amount_check: 'Quote amount must be greater than zero.',
   lead_payment_amount_check: 'Amount must be greater than zero.',
+  lead_package_type_check: 'This package type is not enabled in the database yet – run db/migrations/002_package_transfers.sql in the Supabase SQL Editor.',
+  lead_lead_no_key: 'That enquiry number is already taken – run db/migrations/003_srq_numbers.sql in the Supabase SQL Editor, then save again.',
 };
 
 /** Converts database errors into messages that make sense to the user. */

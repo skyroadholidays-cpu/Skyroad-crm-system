@@ -66,7 +66,7 @@ export function Shell({ children, username, logout }: { children: ReactNode; use
           <span className="topbar-logo"><Logo small /></span>
           <form action="/search" className="search" role="search">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-            <input name="q" type="search" placeholder="Search client, phone, destination, SKQ no…" aria-label="Search" />
+            <input name="q" type="search" placeholder="Search client, phone, destination, SRQ no…" aria-label="Search" />
           </form>
           <Link href="/leads/new" className="btn btn-primary btn-new">
             <span aria-hidden>+</span><span className="hide-sm"> New enquiry</span>

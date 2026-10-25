@@ -12,6 +12,7 @@ export const metadata = { title: 'Edit enquiry' };
 export default async function EditLeadPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser();
   const { id } = await params;
+  if (!/^\d{1,9}$/.test(id)) notFound();
   const l = await C.getLead(Number(id));
   if (!l || l.deleted_at) notFound();
   return (

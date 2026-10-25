@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/session';
 import * as C from '@/lib/crm';
+import { inSeries } from '@/lib/db-core';
 import { todayIST, fmtDate, fmtDateTime } from '@/lib/dates';
 import { inr } from '@/lib/money';
 import { STAGES, STAGE_LABEL, STAGE_HELP, ACTIVITY_LABEL } from '@/lib/constants';
@@ -15,7 +16,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   await requireUser();
   const sp = await searchParams;
   const today = todayIST();
-  const [d, recent] = await Promise.all([C.getDashboard(today), C.recentActivity(10)]);
+  const [d, recent] = await inSeries(() => C.getDashboard(today), () => C.recentActivity(10));
   const count = (s: string) => d.stageCounts[s]?.count ?? 0;
   const total = Object.values(d.stageCounts).reduce((a, s) => a + s.count, 0);
 

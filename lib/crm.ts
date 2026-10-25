@@ -1,12 +1,12 @@
 // CRM data layer: enquiries (leads), suppliers, supplier quotes, client
 // payments, the activity timeline and the automatic stage rules.
 // House rules (see sql-types.ts): every value is cast, dates/money come back as text.
-import { db, withTx, UserError } from './db-core';
+import { db, withTx, inSeries, UserError } from './db-core';
 import type { Sql } from './sql-types';
 import { parseAmount, parsePositiveAmount, inr } from './money';
 import { isIsoDate, todayIST, addDays } from './dates';
 import {
-  STAGE_LABEL, isStatus, stageRank, INCLUSIONS, PACKAGE_TYPES, PAYMENT_KINDS, QUOTE_STATUS, CHANNELS, LOGGABLE,
+  STAGE_LABEL, isStatus, stageRank, INCLUSIONS, PACKAGE_LABEL, PAYMENT_KINDS, QUOTE_STATUS, CHANNELS, LOGGABLE,
   type Status, type QuoteStatus,
 } from './constants';
 
@@ -139,7 +139,7 @@ export function parseLeadInput(get: Getter, getAll: (k: string) => string[] = ()
     travel_start, travel_end, flexible_dates: get('flexible_dates') === 'on' || get('flexible_dates') === 'true',
     adults, children, child_ages: children ? text(get('child_ages'), 80) : null, infants,
     nights_plan: text(get('nights_plan'), 300), hotel_category: text(get('hotel_category'), 60),
-    package_type: pkg && pkg in PACKAGE_TYPES ? pkg : null, inclusions,
+    package_type: pkg && pkg in PACKAGE_LABEL ? pkg : null, inclusions,
     budget, budget_basis: get('budget_basis') === 'per_person' ? 'per_person' : 'total',
     requirements: text(get('requirements'), 2000),
     next_follow_up: dateOrNull(get('next_follow_up'), 'Follow-up date'), follow_up_note: text(get('follow_up_note'), 300),
@@ -591,39 +591,39 @@ export interface Dashboard {
 export async function getDashboard(today = todayIST()): Promise<Dashboard> {
   const sql = db();
   const monthStart = today.slice(0, 8) + '01';
-  const [stages, month, collect, sources, monthly] = await Promise.all([
-    sql<{ stage: string; count: number; value: string }>`
+  const [stages, month, collect, sources, monthly] = await inSeries(
+    () => sql<{ stage: string; count: number; value: string }>`
       select stage, count(*)::int as count, coalesce(sum(coalesce(quote_amount, case when budget_basis = 'total' then budget else budget * greatest(adults + children, 1) end)), 0)::text as value
       from crm.v_lead where deleted_at is null group by stage`,
-    sql<{ new_n: number; won_n: number; won_value: string; lost_n: number; decided: number }>`
+    () => sql<{ new_n: number; won_n: number; won_value: string; lost_n: number; decided: number }>`
       select count(*) filter (where (created_at at time zone 'Asia/Kolkata')::date >= ${monthStart}::date)::int as new_n,
              count(*) filter (where (confirmed_at at time zone 'Asia/Kolkata')::date >= ${monthStart}::date)::int as won_n,
              coalesce(sum(quote_amount) filter (where (confirmed_at at time zone 'Asia/Kolkata')::date >= ${monthStart}::date), 0)::text as won_value,
              count(*) filter (where stage = 'lost' and (closed_at at time zone 'Asia/Kolkata')::date >= ${monthStart}::date)::int as lost_n,
              count(*) filter (where (created_at at time zone 'Asia/Kolkata')::date >= (${today}::date - 90) and (crm.stage_rank(stage) >= 6 or stage = 'lost'))::int as decided
       from crm.v_lead where deleted_at is null`,
-    sql<{ amount: string; n: number }>`
+    () => sql<{ amount: string; n: number }>`
       select coalesce(sum(balance_due) filter (where balance_due > 0), 0)::text as amount, count(*) filter (where balance_due > 0)::int as n
       from crm.v_lead where deleted_at is null and crm.stage_rank(stage) >= 6`,
-    sql<{ source: string; leads: number; won: number }>`
+    () => sql<{ source: string; leads: number; won: number }>`
       select coalesce(lead_source, 'Not set') as source, count(*)::int as leads, count(*) filter (where crm.stage_rank(stage) >= 6)::int as won
       from crm.v_lead where deleted_at is null and (created_at at time zone 'Asia/Kolkata')::date >= (${today}::date - 365)
       group by 1 order by 2 desc limit 8`,
-    sql<{ month: string; enquiries: number; confirmed: number; value: string }>`
+    () => sql<{ month: string; enquiries: number; confirmed: number; value: string }>`
       with m as (select to_char(d, 'YYYY-MM') as month from generate_series(date_trunc('month', ${today}::date) - interval '11 months', date_trunc('month', ${today}::date), interval '1 month') d)
       select m.month,
              (select count(*) from crm.lead l where l.deleted_at is null and to_char(l.created_at at time zone 'Asia/Kolkata', 'YYYY-MM') = m.month)::int as enquiries,
              (select count(*) from crm.lead l where l.deleted_at is null and to_char(l.confirmed_at at time zone 'Asia/Kolkata', 'YYYY-MM') = m.month)::int as confirmed,
              (select coalesce(sum(quote_amount), 0) from crm.lead l where l.deleted_at is null and to_char(l.confirmed_at at time zone 'Asia/Kolkata', 'YYYY-MM') = m.month)::text as value
       from m order by m.month`,
-  ]);
-  const [followToday, followOverdue, departures, travelling, awaiting] = await Promise.all([
-    selectLeads(sql, `l.deleted_at is null and l.stage <> 'lost' and l.stage <> 'completed' and l.next_follow_up = $1::date`, [today], 'order by l.priority = \'hot\' desc, l.id'),
-    selectLeads(sql, `l.deleted_at is null and l.stage <> 'lost' and l.stage <> 'completed' and l.next_follow_up < $1::date`, [today], 'order by l.next_follow_up, l.id limit 20'),
-    selectLeads(sql, `l.deleted_at is null and crm.stage_rank(l.stage) between 6 and 8 and l.travel_start between $1::date and ($1::date + 30)`, [today], 'order by l.travel_start limit 12'),
-    selectLeads(sql, `l.deleted_at is null and l.stage = 'travelling'`, [], 'order by l.travel_end'),
-    selectLeads(sql, `l.deleted_at is null and crm.stage_rank(l.stage) between 1 and 3 and exists (select 1 from crm.supplier_quote q where q.lead_id = l.id and q.status = 'requested' and q.requested_at < now() - interval '24 hours')`, [], 'order by l.id limit 12'),
-  ]);
+  );
+  const [followToday, followOverdue, departures, travelling, awaiting] = await inSeries(
+    () => selectLeads(sql, `l.deleted_at is null and l.stage <> 'lost' and l.stage <> 'completed' and l.next_follow_up = $1::date`, [today], 'order by l.priority = \'hot\' desc, l.id'),
+    () => selectLeads(sql, `l.deleted_at is null and l.stage <> 'lost' and l.stage <> 'completed' and l.next_follow_up < $1::date`, [today], 'order by l.next_follow_up, l.id limit 20'),
+    () => selectLeads(sql, `l.deleted_at is null and crm.stage_rank(l.stage) between 6 and 8 and l.travel_start between $1::date and ($1::date + 30)`, [today], 'order by l.travel_start limit 12'),
+    () => selectLeads(sql, `l.deleted_at is null and l.stage = 'travelling'`, [], 'order by l.travel_end'),
+    () => selectLeads(sql, `l.deleted_at is null and crm.stage_rank(l.stage) between 1 and 3 and exists (select 1 from crm.supplier_quote q where q.lead_id = l.id and q.status = 'requested' and q.requested_at < now() - interval '24 hours')`, [], 'order by l.id limit 12'),
+  );
   const stageCounts: Dashboard['stageCounts'] = {};
   for (const s of stages) stageCounts[s.stage] = { count: s.count, value: s.value };
   const open = stages.filter((s) => stageRank(s.stage as Status) >= 1 && stageRank(s.stage as Status) <= 5);
@@ -649,12 +649,12 @@ export async function getDashboard(today = todayIST()): Promise<Dashboard> {
 export async function followUps(today = todayIST()) {
   const sql = db();
   const base = `l.deleted_at is null and l.stage not in ('lost', 'completed')`;
-  const [overdue, due, upcoming, none] = await Promise.all([
-    selectLeads(sql, `${base} and l.next_follow_up < $1::date`, [today], 'order by l.next_follow_up, l.id'),
-    selectLeads(sql, `${base} and l.next_follow_up = $1::date`, [today], 'order by l.priority = \'hot\' desc, l.id'),
-    selectLeads(sql, `${base} and l.next_follow_up between ($1::date + 1) and ($1::date + 7)`, [today], 'order by l.next_follow_up, l.id'),
-    selectLeads(sql, `${base} and l.next_follow_up is null and crm.stage_rank(l.stage) between 1 and 5`, [], 'order by l.created_at desc limit 50'),
-  ]);
+  const [overdue, due, upcoming, none] = await inSeries(
+    () => selectLeads(sql, `${base} and l.next_follow_up < $1::date`, [today], 'order by l.next_follow_up, l.id'),
+    () => selectLeads(sql, `${base} and l.next_follow_up = $1::date`, [today], 'order by l.priority = \'hot\' desc, l.id'),
+    () => selectLeads(sql, `${base} and l.next_follow_up between ($1::date + 1) and ($1::date + 7)`, [today], 'order by l.next_follow_up, l.id'),
+    () => selectLeads(sql, `${base} and l.next_follow_up is null and crm.stage_rank(l.stage) between 1 and 5`, [], 'order by l.created_at desc limit 50'),
+  );
   return { overdue, due, upcoming, none };
 }
 
@@ -664,13 +664,13 @@ export async function search(q: string) {
   const s = q.trim();
   if (!s) return { leads: [] as LeadRow[], suppliers: [] as SupplierRow[] };
   const like = `%${s.replace(/[%_\\]/g, (c) => '\\' + c)}%`;
-  const [leads, suppliers] = await Promise.all([
-    listLeads({ q: s, scope: 'all' }, 50),
-    db()<SupplierRow>`select s.id, s.name, s.contact_person, s.email, s.phone, s.whatsapp, s.destinations, s.services, s.notes, s.is_active,
+  const [leads, suppliers] = await inSeries(
+    () => listLeads({ q: s, scope: 'all' }, 50),
+    () => db()<SupplierRow>`select s.id, s.name, s.contact_person, s.email, s.phone, s.whatsapp, s.destinations, s.services, s.notes, s.is_active,
                        0 as requests, 0 as quotes, 0 as selected, null as last_request_at
                      from crm.supplier s where s.name ilike ${like}::text or s.email ilike ${like}::text or s.destinations ilike ${like}::text
                        or s.contact_person ilike ${like}::text or s.phone ilike ${like}::text order by s.name limit 20`,
-  ]);
+  );
   return { leads, suppliers };
 }
 

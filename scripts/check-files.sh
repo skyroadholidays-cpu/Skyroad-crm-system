@@ -1,0 +1,73 @@
+#!/bin/bash
+# Lists any project file that is missing from this folder.
+# Usage (from the skyroad-crm folder):  bash scripts/check-files.sh
+missing=0
+while IFS= read -r f; do
+  if [ ! -f "$f" ]; then echo "MISSING: $f"; missing=$((missing+1)); fi
+done <<'LIST'
+.env.example
+.gitignore
+README.md
+app/(app)/follow-ups/page.tsx
+app/(app)/layout.tsx
+app/(app)/leads/[id]/edit/page.tsx
+app/(app)/leads/[id]/page.tsx
+app/(app)/leads/new/page.tsx
+app/(app)/leads/page.tsx
+app/(app)/page.tsx
+app/(app)/pipeline/page.tsx
+app/(app)/reports/page.tsx
+app/(app)/search/page.tsx
+app/(app)/settings/page.tsx
+app/(app)/suppliers/[id]/page.tsx
+app/(app)/suppliers/page.tsx
+app/actions.ts
+app/api/backup/route.ts
+app/api/export/route.ts
+app/api/health/route.ts
+app/error.tsx
+app/globals.css
+app/icon.svg
+app/layout.tsx
+app/login/page.tsx
+app/not-found.tsx
+app/setup/page.tsx
+components/ActionForm.tsx
+components/CountChart.tsx
+components/LeadBits.tsx
+components/LeadForm.tsx
+components/Shell.tsx
+components/SupplierForm.tsx
+components/client.tsx
+components/ui.tsx
+db/migrations/001_init.sql
+db/tests/business_rules.sql
+lib/auth-core.ts
+lib/constants.ts
+lib/crm.ts
+lib/csv.ts
+lib/dates.ts
+lib/db-core.ts
+lib/db.ts
+lib/money.ts
+lib/quick-parse.ts
+lib/reports.ts
+lib/session.ts
+lib/sql-types.ts
+lib/templates.ts
+next.config.mjs
+package.json
+public/logo-mark.svg
+public/logo.svg
+scripts/_env.mjs
+scripts/backup.mjs
+scripts/migrate.mjs
+scripts/set-password.mjs
+scripts/test.mjs
+tests/app.test.ts
+tests/pg-mini.ts
+tsconfig.json
+vercel.json
+scripts/check-files.sh
+LIST
+if [ $missing -eq 0 ]; then echo "✓ All files present"; else echo "$missing file(s) missing"; fi

@@ -1,7 +1,7 @@
 // Standard messages, filled from the enquiry. Pure functions: used on pages
 // (to build Gmail / WhatsApp links) and later by automations.
 import { durationLabel } from './quick-parse';
-import { PACKAGE_TYPES, type PackageType } from './constants';
+import { PACKAGE_LABEL } from './constants';
 
 export interface LeadForMessage {
   lead_no: string;
@@ -59,7 +59,7 @@ const firstName = (n: string) => n.trim().split(/\s+/)[0];
 
 /** The standard rate request you send to a supplier / DMC. */
 export function supplierRequest(l: LeadForMessage, supplierContact?: string | null) {
-  const pkg = l.package_type ? PACKAGE_TYPES[l.package_type as PackageType] ?? l.package_type : 'Package as per itinerary';
+  const pkg = l.package_type ? PACKAGE_LABEL[l.package_type] ?? l.package_type : 'Package as per itinerary';
   const lines = [
     `Dear ${supplierContact?.trim() || 'Team'},`,
     '',

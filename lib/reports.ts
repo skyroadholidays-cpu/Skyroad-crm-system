@@ -1,7 +1,7 @@
 // CRM reports. Each returns the same shape so the page, CSV export and print view share one renderer.
 import { db } from './db-core';
 import { fmtDate } from './dates';
-import { STAGE_LABEL, STAGES, PACKAGE_TYPES, type Status, type PackageType } from './constants';
+import { STAGE_LABEL, STAGES, PACKAGE_LABEL, type Status } from './constants';
 
 export interface Column { key: string; label: string; kind?: 'money' | 'int' | 'date' | 'pct' | 'text'; total?: boolean }
 export interface Report { key: string; title: string; subtitle: string; columns: Column[]; rows: Record<string, any>[] }
@@ -138,7 +138,7 @@ export async function runReport(key: ReportKey, from: string, to: string, period
           { key: 'pax', label: 'Pax', kind: 'int', total: true }, { key: 'nights_plan', label: 'Nights' }, { key: 'package', label: 'Package' }, { key: 'hotel_category', label: 'Hotel' },
           { key: 'stage_label', label: 'Stage' }, { key: 'quote_amount', label: 'Quoted', kind: 'money', total: true }, { key: 'paid', label: 'Received', kind: 'money', total: true },
           { key: 'balance_due', label: 'Balance', kind: 'money', total: true }, { key: 'next_follow_up', label: 'Follow-up', kind: 'date' }],
-        rows: rows.map((r) => ({ ...r, stage_label: STAGE_LABEL[r.stage as Status], package: r.package_type ? PACKAGE_TYPES[r.package_type as PackageType] : '' })),
+        rows: rows.map((r) => ({ ...r, stage_label: STAGE_LABEL[r.stage as Status], package: r.package_type ? (PACKAGE_LABEL[r.package_type] ?? r.package_type) : '' })),
       };
     }
   }

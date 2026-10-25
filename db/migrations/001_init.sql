@@ -80,11 +80,11 @@ create table if not exists supplier (
 create unique index if not exists supplier_name_uq on supplier (lower(name));
 
 -- ───────────────────────────── leads ─────────────────────────────
-create sequence if not exists lead_no_seq start 101;
+create sequence if not exists lead_no_seq start 1;
 
 create table if not exists lead (
   id              serial primary key,
-  lead_no         text not null unique default ('SKQ-' || lpad(nextval('crm.lead_no_seq')::text, 5, '0')),
+  lead_no         text not null unique default ('SRQ-' || lpad(nextval('crm.lead_no_seq')::text, 5, '0')),
   status          text not null default 'new_query' check (status in (
                     'new_query','supplier_mailed','quote_received','quote_shared','follow_up',
                     'booking_confirmed','advance_received','final_payment_received','travelling','completed','lost')),
