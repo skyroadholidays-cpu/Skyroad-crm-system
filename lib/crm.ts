@@ -74,7 +74,7 @@ const dateOrNull = (v: string | undefined, label: string) => {
 
 async function log(tx: Sql, leadId: number, kind: string, body: string, actor: string | null, meta?: object) {
   await tx`insert into crm.activity (lead_id, kind, body, actor, meta)
-           values (${leadId}::int, ${kind}::text, ${body}::text, ${actor}::text, ${meta ? JSON.stringify(meta) : null}::jsonb)`;
+           values (${leadId}::int, ${kind}::text, ${body}::text, ${actor}::text, ${meta ? JSON.stringify(meta) : null}::text::jsonb)`;
 }
 
 /**
@@ -160,7 +160,7 @@ export async function createLead(actor: string, i: LeadInput, idem?: string | nu
       values (${i.client_name}::text, ${i.phone}::text, ${i.email}::text, ${i.city}::text, ${i.lead_source}::text, ${i.priority}::text,
         ${i.destination}::text, ${i.trip_type}::text, ${i.travel_start}::date, ${i.travel_end}::date, ${i.flexible_dates}::boolean,
         ${i.adults}::int, ${i.children}::int, ${i.child_ages}::text, ${i.infants}::int, ${i.nights_plan}::text, ${i.hotel_category}::text,
-        ${i.package_type}::text, (select coalesce(array_agg(x), '{}') from jsonb_array_elements_text(${JSON.stringify(i.inclusions)}::jsonb) x),
+        ${i.package_type}::text, string_to_array(${i.inclusions.join('\u001f')}::text, chr(31)),
         ${i.budget}::numeric, ${i.budget_basis}::text, ${i.requirements}::text, ${i.next_follow_up}::date, ${i.follow_up_note}::text,
         ${i.notes}::text, ${idem ?? null}::text, ${actor}::text, ${actor}::text)
       returning id, lead_no`;
@@ -177,7 +177,7 @@ export async function updateLead(actor: string, id: number, i: LeadInput): Promi
         travel_start = ${i.travel_start}::date, travel_end = ${i.travel_end}::date, flexible_dates = ${i.flexible_dates}::boolean,
         adults = ${i.adults}::int, children = ${i.children}::int, child_ages = ${i.child_ages}::text, infants = ${i.infants}::int,
         nights_plan = ${i.nights_plan}::text, hotel_category = ${i.hotel_category}::text, package_type = ${i.package_type}::text,
-        inclusions = (select coalesce(array_agg(x), '{}') from jsonb_array_elements_text(${JSON.stringify(i.inclusions)}::jsonb) x),
+        inclusions = string_to_array(${i.inclusions.join('\u001f')}::text, chr(31)),
         budget = ${i.budget}::numeric, budget_basis = ${i.budget_basis}::text, requirements = ${i.requirements}::text,
         next_follow_up = ${i.next_follow_up}::date, follow_up_note = ${i.follow_up_note}::text, notes = ${i.notes}::text,
         updated_by = ${actor}::text
