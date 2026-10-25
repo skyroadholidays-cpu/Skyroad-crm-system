@@ -31,6 +31,8 @@ export interface ParsedEnquiry {
   budget_basis?: 'total' | 'per_person';
   lead_source?: string;
   requirements?: string;
+  city?: string;
+  flexible_dates?: boolean;
 }
 
 const MONTHS: Record<string, number> = {
@@ -121,7 +123,155 @@ function words(n: string) {
   return /^\d+$/.test(n) ? Number(n) : w[n.toLowerCase()];
 }
 
+/**
+ * Reads an enquiry. When it is written in the fixed order – one item per line –
+ *   1 Name (+ phone)   2 City   3 Dates   4 Destination (+ nights)   5 Travellers   6 Package
+ * each line is read as exactly that item. Lines may also carry labels in any
+ * order ("City: Mumbai"). Anything else falls back to best-guess reading.
+ */
 export function parseEnquiry(input: string, today: string): ParsedEnquiry {
+  return parseOrdered(input, today) ?? parseFree(input, today);
+}
+
+export const ORDER = ['name', 'city', 'dates', 'destination', 'pax', 'package'] as const;
+export type Slot = (typeof ORDER)[number];
+export const SLOT_LABEL: Record<Slot, string> = { name: 'Name', city: 'City', dates: 'Dates', destination: 'Destination', pax: 'Travellers', package: 'Package' };
+export const ORDER_TEMPLATE = 'Rahul Shah 98765 43210\nMumbai\n1 Dec to 6 Dec\nThailand – 2N Krabi, 3N Phuket\n2 adults 1 child\nCustomised package';
+
+const HEADER_LINE = /^(new\s*(q|query|enquiry|inquiry|lead)|enquiry|inquiry|query|lead)\b[\s:.\-!]*$/i;
+const LABELS: [Slot, RegExp][] = [
+  ['name', /^(name|client|guest|customer)\s*[:\-–]\s*/i],
+  ['city', /^(city|from city|from|location|based in)\s*[:\-–]\s*/i],
+  ['dates', /^(dates?|travel dates?|when|travel)\s*[:\-–]\s*/i],
+  ['destination', /^(destination|dest|place|trip|to|going to)\s*[:\-–]\s*/i],
+  ['pax', /^(pax|no\.? of pax|travell?ers|people|persons|guests|members)\s*[:\-–]\s*/i],
+  ['package', /^(package|service|services|type|need|needs|requirement|booking)\s*[:\-–]\s*/i],
+];
+const NO_DATES = /\b(tbc|tba|flexible|not decided|not fixed|any ?time|open)\b/i;
+
+function isDateLine(line: string, today: string) {
+  return !!parseDates(line, today).start || NO_DATES.test(line);
+}
+
+/** "2 adults 1 child", "2+1", "2A 1C 1I", "4 pax", "couple", "4" */
+export function parsePax(line: string): { adults?: number; children?: number; infants?: number; child_ages?: string } {
+  const l = line.toLowerCase().trim();
+  const out: { adults?: number; children?: number; infants?: number; child_ages?: string } = {};
+  const num = String.raw`(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten)`;
+  const ad = l.match(new RegExp(`${num}\\s*(?:adults?|adlts?|a\\b|pax|people|persons?|ppl|guests?|travell?ers?|members?)`));
+  const ch = l.match(new RegExp(`${num}\\s*(?:child(?:ren)?|kids?|cnb|cwb|chd|c\\b)(?:\\s*\\(([^)]*)\\))?`));
+  const inf = l.match(new RegExp(`${num}\\s*(?:infants?|babies|baby|i\\b)`));
+  if (ad) out.adults = words(ad[1]);
+  if (ch) { out.children = words(ch[1]); if (ch[2]) out.child_ages = ch[2].trim(); }
+  if (inf) out.infants = words(inf[1]);
+  if (out.adults === undefined) {
+    const plus = l.match(/^(\d{1,3})\s*\+\s*(\d{1,3})(?:\s*\+\s*(\d{1,3}))?/);
+    if (plus) { out.adults = Number(plus[1]); out.children = Number(plus[2]); if (plus[3]) out.infants = Number(plus[3]); }
+    else if (/^\d{1,3}$/.test(l)) out.adults = Number(l);
+    else if (/\b(couple|honeymoon)\b/.test(l)) out.adults = 2;
+    else { const fam = l.match(/family of (\d{1,2})/); if (fam) out.adults = Number(fam[1]); }
+  }
+  return out;
+}
+
+/** "Customised package", "hotel only", "hotel + flight", "transfers", "visa" */
+export function parsePackage(line: string): { package_type?: ParsedEnquiry['package_type']; inclusions: string[] } {
+  const l = line.toLowerCase();
+  const found: { at: number; type: NonNullable<ParsedEnquiry['package_type']> }[] = [];
+  const add = (re: RegExp, type: NonNullable<ParsedEnquiry['package_type']>) => { const m = re.exec(l); if (m) found.push({ at: m.index, type }); };
+  add(/custom|package|land|tour|sightseeing|full/, 'land_package');
+  add(/hotel|stay|room|resort/, 'hotel_only');
+  add(/transfer|cab|taxi|car|innova|tempo|coach|bus/, 'transfers');
+  add(/flight|air|ticket/, 'flights_only');
+  add(/visa/, 'visa_only');
+  found.sort((a, b) => a.at - b.at);
+  const inc = new Set<string>();
+  for (const f of found) for (const x of PACKAGE_INCLUSIONS[f.type] ?? []) inc.add(x);
+  if (/insurance/.test(l)) inc.add('Travel insurance');
+  if (/meal|breakfast/.test(l)) inc.add('Meals');
+  return { package_type: found[0]?.type, inclusions: [...inc] };
+}
+
+function parseOrdered(input: string, today: string): ParsedEnquiry | null {
+  const lines = input.replace(/\r/g, '').split(/\n|\s*\|\s*/).map((l) => l.trim()).filter((l) => l && !HEADER_LINE.test(l));
+  if (lines.length < 3) return null;
+  const labelled = lines.filter((l) => LABELS.some(([, re]) => re.test(l))).length;
+  if (labelled < 2 && !(lines.length >= 4 && isDateLine(lines[2], today))) return null;
+
+  const slot: Partial<Record<Slot, string>> = {};
+  const free: string[] = [];
+  for (const line of lines) {
+    const lab = LABELS.find(([k, re]) => re.test(line) && !slot[k]);
+    if (lab) slot[lab[0]] = line.replace(lab[1], '').trim();
+    else free.push(line);
+  }
+  const extra: string[] = [];
+  for (const line of free) {
+    const next = ORDER.find((k) => slot[k] === undefined);
+    if (next) slot[next] = line; else extra.push(line);
+  }
+
+  const out: ParsedEnquiry = {};
+  // 1 name (+ phone / email)
+  if (slot.name) {
+    let n = slot.name;
+    const email = n.match(/[^\s@,;]+@[^\s@,;]+\.[A-Za-z]{2,}/);
+    if (email) { out.email = email[0]; n = n.replace(email[0], ' '); }
+    const phone = n.match(/\+?\d[\d\s-]{8,15}\d/);
+    if (phone && phone[0].replace(/\D/g, '').length >= 10) { out.phone = phone[0].replace(/[\s-]/g, ''); n = n.replace(phone[0], ' '); }
+    n = n.replace(/^(mr|mrs|ms|dr)\.?\s+/i, (m) => m).replace(/[,;:\-–|]+\s*$/, '').replace(/\s+/g, ' ').trim();
+    if (n) out.client_name = n.slice(0, 120);
+  }
+  // 2 city
+  if (slot.city) out.city = slot.city.replace(/[,;.]+$/, '').trim().slice(0, 80);
+  // 3 dates
+  if (slot.dates) {
+    const d = parseDates(slot.dates, today);
+    if (d.start) out.travel_start = d.start;
+    if (d.end) out.travel_end = d.end;
+    if (/flexible|tbc|tba|not fixed|not decided/i.test(slot.dates)) out.flexible_dates = true;
+  }
+  // 4 destination (+ nights plan)
+  if (slot.destination) {
+    const t = slot.destination;
+    const legRe = /(\d{1,2})\s*(?:n|nts?|nights?)\b\s*(?:in\s+|at\s+)?([A-Za-z][A-Za-z .'()-]*?)(?=\s*(?:,|\+|&|\/|\band\b|$|\d{1,2}\s*(?:n|nts?|nights?)\b))/gi;
+    const legs = [...t.matchAll(legRe)].map((m) => ({ n: Number(m[1]), place: m[2].trim().replace(/\b\w/g, (c) => c.toUpperCase()), at: m.index ?? 0 }))
+      .filter((x) => x.place && !/^(stay|d|days?)$/i.test(x.place));
+    if (legs.length) out.nights_plan = legs.map((x) => `${x.n}N ${x.place}`).join(', ');
+    const head = (legs.length ? t.slice(0, legs[0].at) : t).replace(/[\s,;:\-–(]+$/, '').trim();
+    out.destination = (head || legs.map((x) => x.place).join(' + ')).slice(0, 120);
+    const total = legs.reduce((a, x) => a + x.n, 0);
+    if (out.travel_start && !out.travel_end && total) out.travel_end = addDays(out.travel_start, total);
+    const dd = `${out.destination} ${out.nights_plan ?? ''}`;
+    const has = (list: string[]) => list.some((w) => new RegExp(`\\b${w}\\b`, 'i').test(dd));
+    if (has(DOMESTIC)) out.trip_type = 'domestic';
+    else if (has(INTERNATIONAL)) out.trip_type = 'international';
+  }
+  // 5 travellers
+  if (slot.pax) Object.assign(out, parsePax(slot.pax));
+  // 6 package
+  if (slot.package) {
+    const p = parsePackage(slot.package);
+    if (p.package_type) out.package_type = p.package_type;
+    if (p.inclusions.length) out.inclusions = p.inclusions;
+  }
+  // extras from anywhere: hotel stars, budget; leftover lines → special requests
+  const all = lines.join('\n');
+  const free2 = parseFree(all, today);
+  if (free2.hotel_category) out.hotel_category = free2.hotel_category;
+  if (free2.budget) { out.budget = free2.budget; out.budget_basis = free2.budget_basis; }
+  if (free2.lead_source) out.lead_source = free2.lead_source;
+  if (extra.length) out.requirements = extra.join('\n').slice(0, 2000);
+  return out;
+}
+
+/** Which of the six key items a reading found – used to show "missing" after Fill. */
+export function slotsFound(r: ParsedEnquiry): Record<Slot, boolean> {
+  return { name: !!r.client_name, city: !!r.city, dates: !!r.travel_start || !!r.flexible_dates, destination: !!r.destination,
+    pax: r.adults !== undefined || r.children !== undefined, package: !!r.package_type };
+}
+
+function parseFree(input: string, today: string): ParsedEnquiry {
   const out: ParsedEnquiry = {};
   const text = input.replace(/\r/g, '').trim();
   if (!text) return out;

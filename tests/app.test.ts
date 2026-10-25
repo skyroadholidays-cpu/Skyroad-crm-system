@@ -84,6 +84,19 @@ async function main() {
     assert.deepEqual([k.trip_type, k.adults, k.travel_end], ['domestic', 2, '2027-04-20']);
     assert.deepEqual(parseEnquiry('', today), {});
   });
+  await test('quick-add reads the 6-line order exactly (name, city, dates, destination, travellers, package)', () => {
+    const r = parseEnquiry('Rahul Shah 98765 43210\nMumbai\n1 Dec to 6 Dec\nThailand – 2N Krabi, 3N Phuket\n2 adults 1 child\nCustomised package', '2026-10-25');
+    assert.deepEqual([r.client_name, r.phone, r.city, r.travel_start, r.travel_end, r.destination, r.nights_plan, r.adults, r.children, r.package_type],
+      ['Rahul Shah', '9876543210', 'Mumbai', '2026-12-01', '2026-12-06', 'Thailand', '2N Krabi, 3N Phuket', 2, 1, 'land_package']);
+    const k = parseEnquiry('Karan Mehta | Ahmedabad | Dec 20-24 | Dubai | 2+2 | visa', '2026-10-25');
+    assert.deepEqual([k.client_name, k.city, k.travel_end, k.destination, k.adults, k.children, k.package_type], ['Karan Mehta', 'Ahmedabad', '2026-12-24', 'Dubai', 2, 2, 'visa_only']);
+    const v = parseEnquiry('Nambi Somaiya\nValsad\n5 Dec\nKerala 2N Munnar 2N Alleppey\n9 adults\nTransfers – Urbania taxi\nPrefer Mercedes', '2026-10-25');
+    assert.deepEqual([v.city, v.travel_end, v.destination, v.adults, v.package_type, v.requirements], ['Valsad', '2026-12-09', 'Kerala', 9, 'transfers', 'Prefer Mercedes']);
+    const lab = parseEnquiry('Name: Pooja\nPax: 2A 1C\nDestination: Bali\nDates: flexible\nPackage: hotel only\nCity: Surat', '2026-10-25');
+    assert.deepEqual([lab.client_name, lab.city, lab.flexible_dates, lab.destination, lab.adults, lab.children, lab.package_type], ['Pooja', 'Surat', true, 'Bali', 2, 1, 'hotel_only']);
+    const m = parseEnquiry('Meera Iyer\nPune\n15/01/2027 to 18/01/2027\nGoa\n4\nhotel + flight', '2026-10-25');
+    assert.deepEqual([m.adults, m.package_type, m.inclusions], [4, 'hotel_only', ['Hotel', 'Flights']]);
+  });
   await test('standard supplier mail and WhatsApp links are filled from the enquiry', () => {
     const l = { lead_no: 'SRQ-00001', client_name: 'Asha Rao', destination: 'Thailand', travel_start: '2026-12-01', travel_end: '2026-12-06', adults: 2, children: 1, child_ages: '6',
       infants: 0, nights_plan: '2N Krabi, 3N Phuket', hotel_category: '4 Star', package_type: 'land_package', inclusions: ['Hotel', 'Full sightseeing'], requirements: null, quote_amount: '145000.00' };

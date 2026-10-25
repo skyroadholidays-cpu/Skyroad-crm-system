@@ -531,3 +531,13 @@ fieldset.field { border: 0; padding: 0; margin: 0; }
   .q-amt { text-align: left; white-space: normal; }
   .flex-check { padding-bottom: 0; }
 }
+
+.order-guide { list-style: none; margin: 2px 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.order-guide li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.order-guide .og-n { width: 20px; height: 20px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; font-size: .7rem; }
+.order-guide li.ok { border-color: var(--in); background: var(--in-soft); color: var(--in); }
+.order-guide li.ok .og-n { background: var(--in); }
+.order-guide li.miss { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+.order-guide li.miss .og-n { background: var(--warn); }
+.warn-text { color: var(--warn); font-weight: 600; }
+.ok-text { color: var(--in); font-weight: 600; }

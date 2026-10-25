@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { ActionForm, SubmitButton } from './ActionForm';
 import type { FormState } from '@/app/actions';
-import { parseEnquiry, durationLabel, type ParsedEnquiry } from '@/lib/quick-parse';
+import { parseEnquiry, durationLabel, slotsFound, ORDER, SLOT_LABEL, ORDER_TEMPLATE, type ParsedEnquiry, type Slot } from '@/lib/quick-parse';
 import { LEAD_SOURCES, HOTEL_CATEGORIES, PACKAGE_TYPES, INCLUSIONS, PRIORITIES, inclusionsForPackage } from '@/lib/constants';
 
 export interface LeadFormValues {
@@ -16,12 +16,6 @@ export interface LeadFormValues {
 }
 
 type V = Required<{ [K in keyof LeadFormValues]: any }>;
-
-const LABEL: Record<string, string> = {
-  client_name: 'name', phone: 'phone', email: 'email', destination: 'destination', travel_start: 'dates', adults: 'adults',
-  children: 'children', infants: 'infants', nights_plan: 'nights', hotel_category: 'hotel', package_type: 'package',
-  inclusions: 'inclusions', budget: 'budget', trip_type: 'trip type', lead_source: 'source',
-};
 
 export function LeadForm({ action, mode, values, today, idem }: {
   action: (s: FormState, fd: FormData) => Promise<FormState>; mode: 'create' | 'edit'; values: LeadFormValues; today: string; idem?: string;
@@ -38,20 +32,22 @@ export function LeadForm({ action, mode, values, today, idem }: {
   });
   const [paste, setPaste] = useState('');
   const [filled, setFilled] = useState<string | null>(null);
+  const [found, setFound] = useState<Record<Slot, boolean> | null>(null);
   const set = (k: keyof V) => (e: { target: { value: string } }) => setV((p) => ({ ...p, [k]: e.target.value }));
 
   function fill() {
     const r: ParsedEnquiry = parseEnquiry(paste, today);
     const keys = Object.keys(r) as (keyof ParsedEnquiry)[];
-    if (!keys.length) { setFilled('Nothing recognised – fill the fields below.'); return; }
+    setFound(slotsFound(r));
+    if (!keys.length) { setFilled('Nothing recognised – use the 6-line order shown, or fill the fields below.'); return; }
     setV((p) => {
       const n = { ...p } as any;
       for (const k of keys) n[k] = k === 'inclusions' ? [...new Set([...(p.inclusions as string[]), ...(r.inclusions ?? [])])] : r[k];
       if (!p.notes) n.notes = `Original enquiry:\n${paste.trim()}`;
       return n;
     });
-    const seen = keys.filter((k) => LABEL[k]).map((k) => LABEL[k]);
-    setFilled(`Filled ${[...new Set(seen)].join(', ')}. Check and add the client's name & phone if missing.`);
+    const missing = ORDER.filter((k) => !slotsFound(r)[k]).map((k) => SLOT_LABEL[k].toLowerCase());
+    setFilled(missing.length ? `Filled the form – please add the ${missing.join(', ')} below.` : 'All 6 items filled – check them below and save.');
   }
 
   const toggleInc = (x: string) => setV((p) => ({ ...p, inclusions: p.inclusions.includes(x) ? p.inclusions.filter((i: string) => i !== x) : [...p.inclusions, x] }));
@@ -65,14 +61,23 @@ export function LeadForm({ action, mode, values, today, idem }: {
       {mode === 'create' && (
         <section className="paste-box">
           <label className="field field-wide">
-            <span className="field-label">Quick add – paste the enquiry</span>
-            <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4}
-                      placeholder={'e.g.\nThailand\n1 Dec to 6 Dec\n2 adults\n2N Krabi, 3N Phuket'} />
+            <span className="field-label">Quick add – one item per line, in this order</span>
+            <ol className="order-guide">
+              {ORDER.map((k, i) => (
+                <li key={k} className={found ? (found[k] ? 'ok' : 'miss') : ''}>
+                  <span className="og-n">{found ? (found[k] ? '✓' : '!') : i + 1}</span>{SLOT_LABEL[k]}
+                </li>
+              ))}
+            </ol>
+            <textarea value={paste} onChange={(e) => { setPaste(e.target.value); setFound(null); }} rows={6}
+                      placeholder={ORDER_TEMPLATE} />
           </label>
           <div className="row">
-            <button type="button" className="btn btn-ghost" onClick={fill} disabled={!paste.trim()}>Fill the form ↓</button>
-            {filled && <span className="small muted">{filled}</span>}
+            <button type="button" className="btn btn-primary" onClick={fill} disabled={!paste.trim()}>Fill the form ↓</button>
+            {!paste && <button type="button" className="btn btn-link small" onClick={() => setPaste(ORDER_TEMPLATE)}>Start from an example</button>}
+            {filled && <span className={`small ${found && ORDER.some((k) => !found[k]) ? 'warn-text' : 'ok-text'}`}>{filled}</span>}
           </div>
+          <p className="muted small" style={{ margin: 0 }}>Name can include the phone · Dates like “1 Dec to 6 Dec” or “flexible” · Destination can include nights (“Thailand – 2N Krabi, 3N Phuket”) · Travellers like “2 adults 1 child” or “2+1” · Package: customised, hotel, transfers, flights or visa. One line also works with “ | ” between items.</p>
         </section>
       )}
 
@@ -164,7 +169,7 @@ export function LeadForm({ action, mode, values, today, idem }: {
         <div className="field">
           <span className="field-label">Client budget (₹)</span>
           <div className="row nowrap">
-            <input name="budget" value={v.budget} onChange={set('budget')} inputMode="decimal" placeholder="5,00,000" style={{ flex: 1 }} />
+            <input name="budget" value={v.budget} onChange={set('budget')} inputMode="decimal" placeholder="1,50,000" style={{ flex: 1 }} />
             <select name="budget_basis" value={v.budget_basis} onChange={set('budget_basis')} style={{ width: 'auto' }}>
               <option value="total">total</option><option value="per_person">per person</option>
             </select>

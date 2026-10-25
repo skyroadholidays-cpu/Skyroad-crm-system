@@ -17,7 +17,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <div className="auth-card">
         <Logo />
         <h1>Sign in</h1>
-        <p className="muted small">Skyroad Holidays sales CRM</p>
+        <p className="muted small">Skyroad Holiday's Sales CRM</p>
         <ActionForm action={loginAction} className="form">
           <input type="hidden" name="next" value={next ?? '/'} />
           <label className="field">
